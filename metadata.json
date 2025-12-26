@@ -1,0 +1,5 @@
+{
+  "name": "IPTV Creator SaaS",
+  "description": "Uma plataforma completa para revendedores de IPTV: gerador de banners esportivos em tempo real (API-Football), editor de anúncios com IA (Gemini), gerador de legendas e banners de filmes (TMDB). Tudo integrado para potencializar suas vendas.",
+  "requestFramePermissions": []
+}
