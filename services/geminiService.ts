@@ -3,7 +3,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Função auxiliar para obter a chave de forma segura
 const getApiKey = () => {
-  const key = import.meta.env.VITE_API_KEY;
+  // O Vite exige 'import.meta.env' para acessar variáveis em ambiente de navegador
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
   if (!key || key === "" || key === "undefined") return null;
   return key;
 };
