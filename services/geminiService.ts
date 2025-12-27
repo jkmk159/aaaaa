@@ -1,28 +1,26 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Inicialização única: Alterado para buscar tanto de process.env quanto de import.meta.env
+// Tenta pegar a chave do process.env (GitHub) ou import.meta (Vite Local)
 const getAI = () => {
-  const apiKey = (process.env.API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "");
+  const apiKey = process.env.API_KEY || import.meta.env.VITE_GEMINI_API_KEY || "";
   return new GoogleGenAI({ apiKey });
 };
 
-// Modelo estável para texto e análise: gemini-1.5-flash
-const TEXT_MODEL = 'gemini-1.5-flash';
+// MODELO OBRIGATÓRIO PARA PLANO GRATUITO (Evita Erro 429)
+const MODEL_NAME = 'gemini-1.5-flash';
 
 export const generateCaption = async (description: string) => {
   try {
     const ai = getAI();
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL,
+      model: MODEL_NAME,
       contents: [{ parts: [{ text: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas.` }] }],
-      config: {
-        temperature: 0.8,
-      }
+      config: { temperature: 0.8 }
     });
     return response.text || "";
   } catch (error: any) {
     console.error("Erro Gemini:", error);
-    throw new Error("Falha na IA: " + (error.message || "Erro desconhecido"));
+    throw new Error("Falha na IA: " + (error.message || "Erro de cota ou rede"));
   }
 };
 
@@ -31,7 +29,7 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
   const prompt = `Gere EXATAMENTE 20 variações de mensagens de vendas para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON de strings.`;
 
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
+    model: MODEL_NAME,
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
@@ -49,24 +47,20 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
   }
 };
 
+// ESSA FUNÇÃO RESOLVE O ERRO "ReferenceError: generateVisual is not defined"
 export const generateVisual = async (prompt: string, originalImageBase64: string) => {
-  const ai = getAI();
-  const imagePart = {
-    inlineData: {
-      data: originalImageBase64.split(',')[1],
-      mimeType: 'image/jpeg',
-    },
-  };
-
   try {
+    const ai = getAI();
+    const imagePart = {
+      inlineData: {
+        data: originalImageBase64.split(',')[1],
+        mimeType: 'image/jpeg',
+      },
+    };
+
     const response = await ai.models.generateContent({
-      model: TEXT_MODEL, // gemini-1.5-flash também suporta visão (multimodal)
-      contents: [{ 
-        parts: [
-          imagePart, 
-          { text: prompt }
-        ] 
-      }],
+      model: MODEL_NAME,
+      contents: [{ parts: [imagePart, { text: prompt }] }],
     });
 
     if (response.candidates?.[0]?.content?.parts) {
@@ -78,7 +72,7 @@ export const generateVisual = async (prompt: string, originalImageBase64: string
     }
     return null;
   } catch (error) {
-    console.error("Erro na geração visual:", error);
+    console.error("Geração visual indisponível:", error);
     return null;
   }
 };
@@ -86,20 +80,12 @@ export const generateVisual = async (prompt: string, originalImageBase64: string
 export const analyzeAd = async (imageBuffer: string, text: string) => {
   const ai = getAI();
   const imagePart = {
-    inlineData: {
-      data: imageBuffer.split(',')[1],
-      mimeType: 'image/jpeg',
-    },
+    inlineData: { data: imageBuffer.split(',')[1], mimeType: 'image/jpeg' },
   };
 
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: [{ 
-      parts: [
-        imagePart, 
-        { text: `Analise este anúncio: "${text}" e retorne JSON com os campos strengths, improvements, optimizedText e visualPrompt.` }
-      ] 
-    }],
+    model: MODEL_NAME,
+    contents: [{ parts: [imagePart, { text: `Analise este anúncio: "${text}" e retorne JSON com os campos strengths, improvements, optimizedText e visualPrompt.` }] }],
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -121,21 +107,13 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
 export const getBroadcastsForGames = async (gamesList: string[]) => {
   if (gamesList.length === 0) return [];
   const ai = getAI();
-  const prompt = `Canais de transmissão para: ${gamesList.join(', ')}. Retorne apenas array JSON de strings.`;
   const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: [{ parts: [{ text: prompt }] }],
+    model: MODEL_NAME,
+    contents: [{ parts: [{ text: `Canais de transmissão para: ${gamesList.join(', ')}. Retorne apenas array JSON de strings.` }] }],
     config: {
       responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING }
-      }
+      responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
     }
   });
-  try { 
-    return JSON.parse(response.text || '[]'); 
-  } catch { 
-    return []; 
-  }
+  try { return JSON.parse(response.text || '[]'); } catch { return []; }
 };
