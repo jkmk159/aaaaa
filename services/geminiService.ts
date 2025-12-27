@@ -2,7 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 /**
- * GERAÇÃO DE TEXTO (GEMINI-3-FLASH-PREVIEW)
+ * GERAÇÃO DE TEXTO E ANÁLISE (GEMINI-3-FLASH-PREVIEW)
+ * Modelo de última geração para tarefas de texto, código e raciocínio.
  */
 export const generateCaption = async (description: string) => {
   try {
@@ -20,7 +21,8 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * GERAÇÃO DE IMAGEM (GEMINI-2.5-FLASH-IMAGE - 100% GRATUITO)
+ * GERAÇÃO DE IMAGEM (GEMINI-2.5-FLASH-IMAGE)
+ * Único modelo da série Flash capaz de gerar imagens a partir de texto.
  */
 export const generateVisual = async (prompt: string, originalImageBase64?: string) => {
   if (!process.env.API_KEY) {
@@ -69,6 +71,7 @@ export const generateVisual = async (prompt: string, originalImageBase64?: strin
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION)
+ * Usa o Gemini 3 Flash para analisar a imagem e sugerir melhorias.
  */
 export const analyzeAd = async (imageBuffer: string, text: string) => {
   try {
