@@ -2,18 +2,18 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  // Carrega as variáveis do arquivo .env ou do ambiente (GitHub Actions)
-  const env = loadEnv(mode, process.cwd(), '');
+  // Carrega variáveis do .env e também do ambiente do sistema (GitHub Actions)
+  const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
   
   return {
     plugins: [react()],
     define: {
-      // Isso garante que o navegador encontre a chave em qualquer "idioma" (process ou import.meta)
+      // Mapeamento total para garantir que o navegador encontre as chaves
       'process.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       
-      // Supabase - Corrigindo para evitar o erro 422
+      // Supabase - Resolvendo erro 422 e falhas de conexão
       'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ""),
       'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || ""),
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ""),
@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       sourcemap: false,
-      minify: 'esbuild', // Esbuild é mais rápido e padrão do Vite
+      minify: 'esbuild', 
       rollupOptions: {
         output: {
           manualChunks: {
