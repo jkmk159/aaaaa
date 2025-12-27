@@ -1,161 +1,157 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Agora a chave é buscada de forma segura do ambiente
-const OPENROUTER_API_KEY = process.env.VITE_OPENROUTER_API_KEY || "";
-
-// Inicialização única seguindo as diretrizes
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-// Função auxiliar para converter URL em Base64 (OpenRouter retorna URLs para imagens)
-const urlToBase64 = async (url: string): Promise<string> => {
-  const response = await fetch(url);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-};
-
+/**
+ * GERAÇÃO DE TEXTO (GEMINI-3-FLASH-PREVIEW)
+ */
 export const generateCaption = async (description: string) => {
   try {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas.` }] }],
-      config: {
-        temperature: 0.8,
-      }
+      contents: [{ parts: [{ text: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas. Retorne apenas as opções.` }] }],
+      config: { temperature: 0.8 }
     });
     return response.text || "";
-  } catch (error: any) {
-    console.error("Erro Gemini:", error);
-    throw new Error("Falha na IA: " + (error.message || "Erro desconhecido"));
+  } catch (error) {
+    console.error("Erro Gemini Text:", error);
+    throw error;
   }
 };
 
-export const generateBulkCopies = async (theme: string, data: { server: string; agent: string; price: string; period: string }) => {
-  const ai = getAI();
-  const prompt = `Gere EXATAMENTE 20 variações de mensagens de vendas para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON de strings.`;
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: [{ parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING }
-      }
-    }
-  });
-
-  try {
-    return JSON.parse(response.text || '[]');
-  } catch (e) {
-    return ["Erro ao formatar resposta da IA."];
-  }
-};
-
+/**
+ * GERAÇÃO DE IMAGEM (GEMINI-2.5-FLASH-IMAGE - 100% GRATUITO)
+ */
 export const generateVisual = async (prompt: string, originalImageBase64?: string) => {
-  if (!OPENROUTER_API_KEY) {
-    console.error("Chave do OpenRouter não configurada!");
-    return null;
+  if (!process.env.API_KEY) {
+    throw new Error("Chave de API do Gemini não configurada.");
   }
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "X-Title": "StreamHUB IPTV"
-      },
-      body: JSON.stringify({
-        "model": "openai/dall-e-3",
-        "messages": [
-          {
-            "role": "user",
-            "content": prompt
-          }
-        ]
-      })
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const parts: any[] = [{ text: prompt }];
+
+    if (originalImageBase64) {
+      parts.push({
+        inlineData: {
+          data: originalImageBase64.split(',')[1],
+          mimeType: 'image/jpeg'
+        }
+      });
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: { parts: parts },
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1"
+        }
+      }
     });
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    const urlMatch = content.match(/https?:\/\/[^\s)]+/);
-    
-    if (urlMatch) {
-      return await urlToBase64(urlMatch[0]);
-    }
-    
-    if (data.choices?.[0]?.message?.image_url) {
-      return await urlToBase64(data.choices[0].message.image_url.url);
+    if (!response.candidates?.[0]?.content?.parts) {
+      throw new Error("A IA não retornou partes de conteúdo válidas.");
     }
 
-    throw new Error("Não foi possível extrair a imagem da resposta.");
-  } catch (error) {
-    console.error("Erro OpenRouter Image:", error);
-    return null;
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+    
+    throw new Error("O modelo não gerou uma imagem. Tente ajustar o prompt.");
+  } catch (error: any) {
+    console.error("Erro na geração de imagem Gemini:", error);
+    throw error;
   }
 };
 
+/**
+ * ANÁLISE DE ANÚNCIOS (VISION)
+ */
 export const analyzeAd = async (imageBuffer: string, text: string) => {
-  const ai = getAI();
-  const imagePart = {
-    inlineData: {
-      data: imageBuffer.split(',')[1],
-      mimeType: 'image/jpeg',
-    },
-  };
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const imagePart = {
+      inlineData: {
+        data: imageBuffer.split(',')[1],
+        mimeType: 'image/jpeg',
+      },
+    };
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: { 
-      parts: [
-        imagePart, 
-        { text: `Analise este anúncio: "${text}" e retorne JSON com os campos strengths, improvements, optimizedText e visualPrompt.` }
-      ] 
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-          improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
-          optimizedText: { type: Type.STRING },
-          visualPrompt: { type: Type.STRING }
-        },
-        required: ['strengths', 'improvements', 'optimizedText', 'visualPrompt']
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: { 
+        parts: [
+          imagePart, 
+          { text: `Analise este anúncio de IPTV (texto: "${text}") e retorne JSON com pontos fortes (strengths), melhorias (improvements), texto otimizado (optimizedText) e um prompt visual (visualPrompt) para recriar esta arte com mais qualidade.` }
+        ] 
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+            improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
+            optimizedText: { type: Type.STRING },
+            visualPrompt: { type: Type.STRING }
+          },
+          required: ['strengths', 'improvements', 'optimizedText', 'visualPrompt']
+        }
       }
-    }
-  });
+    });
 
-  return response.text || "";
+    return response.text || "";
+  } catch (error) {
+    console.error("Erro na análise de anúncio:", error);
+    throw error;
+  }
 };
 
-export const getBroadcastsForGames = async (gamesList: string[]) => {
-  if (gamesList.length === 0) return [];
-  const ai = getAI();
-  const prompt = `Canais de transmissão para: ${gamesList.join(', ')}. Retorne apenas array JSON de strings.`;
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: [{ parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING }
+/**
+ * GERAÇÃO EM MASSA DE COPYS
+ */
+export const generateBulkCopies = async (theme: string, data: { server: string; price: string }) => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: `Gere 20 variações de mensagens para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON.` }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
       }
-    }
-  });
-  try { 
-    return JSON.parse(response.text || '[]'); 
-  } catch { 
-    return []; 
+    });
+    return JSON.parse(response.text || '[]');
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * BUSCA DE TRANSMISSÕES
+ */
+export const getBroadcastsForGames = async (gamesList: string[]) => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ parts: [{ text: `Liste canais de transmissão para: ${gamesList.join(', ')}. Retorne array JSON.` }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
+    });
+    return JSON.parse(response.text || '[]');
+  } catch {
+    return [];
   }
 };
