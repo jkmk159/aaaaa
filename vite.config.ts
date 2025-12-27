@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   // Isso carrega variáveis do .env + variáveis do GitHub Actions (process.env)
-  const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   
   return {
     plugins: [react()],
