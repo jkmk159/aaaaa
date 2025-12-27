@@ -6,15 +6,18 @@ const AdEditor: React.FC = () => {
   const [desc, setDesc] = useState('');
   const [captions, setCaptions] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerateCaptions = async () => {
     if (!desc) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await generateCaption(desc);
       setCaptions(res || '');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setError(err.message || "Erro desconhecido ao gerar legendas.");
     } finally {
       setLoading(false);
     }
@@ -37,7 +40,6 @@ const AdEditor: React.FC = () => {
       </header>
 
       <div className="space-y-8">
-        {/* SEÇÃO DE ENTRADA DE DADOS */}
         <section className="bg-[#141824] p-8 rounded-[32px] border border-gray-800 shadow-xl">
           <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center">
             <span className="mr-3 text-xl">📝</span> O que você quer vender?
@@ -51,6 +53,12 @@ const AdEditor: React.FC = () => {
               className="w-full h-40 bg-black/40 border border-gray-700 rounded-2xl p-6 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm font-medium placeholder:text-gray-600"
             />
             
+            {error && (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-[10px] font-black uppercase tracking-widest text-center">
+                ⚠️ {error}
+              </div>
+            )}
+
             <button
               onClick={handleGenerateCaptions}
               disabled={loading || !desc}
@@ -68,7 +76,6 @@ const AdEditor: React.FC = () => {
           </div>
         </section>
 
-        {/* SEÇÃO DE RESULTADOS */}
         {captions && (
           <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-[#141824] border border-gray-800 rounded-[32px] overflow-hidden shadow-2xl">
@@ -99,8 +106,7 @@ const AdEditor: React.FC = () => {
           </section>
         )}
 
-        {/* MENSAGEM DE INSTRUÇÃO CASO VAZIO */}
-        {!captions && !loading && (
+        {!captions && !loading && !error && (
           <div className="py-20 text-center opacity-20 border-2 border-dashed border-gray-800 rounded-[32px]">
             <span className="text-6xl mb-4 block">🤖</span>
             <p className="text-sm font-black uppercase italic tracking-widest">Aguardando sua descrição...</p>
