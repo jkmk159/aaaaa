@@ -1,18 +1,18 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Get environment variables with safe fallbacks
-const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
+// No Vite, usamos import.meta.env para acessar as variáveis injetadas
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-// Initialize the client. If the key is missing, requests will fail with a 401/403 
-// but the application itself will not crash on import.
+// Inicializa o cliente com verificações extras
 export const supabase = createClient(
-  supabaseUrl, 
-  supabaseAnonKey || "no-key-provided"
+  supabaseUrl,
+  supabaseAnonKey || "invalid-key" // Evita que o app quebre se a chave estiver vindo como undefined
 );
 
-// Log a simple warning for developers instead of a critical error that blocks UI progress
-if (!supabaseAnonKey || supabaseAnonKey === "undefined") {
-  console.warn("Supabase: VITE_SUPABASE_ANON_KEY is missing. Database features will be unavailable.");
+// Log informativo para você saber exatamente o que está acontecendo no console
+if (!supabaseAnonKey || supabaseAnonKey === "undefined" || supabaseAnonKey === "invalid-key") {
+  console.error("ERRO CRÍTICO: Chave Anon do Supabase não foi encontrada pelo navegador.");
+} else {
+  console.log("Supabase: Conectado com sucesso.");
 }
