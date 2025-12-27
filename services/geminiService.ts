@@ -1,46 +1,42 @@
 import { GoogleGenAI } from "@google/genai";
 
-// 1. Definição única da função de chave
+/**
+ * Recupera a API Key de forma segura
+ */
 const getApiKey = () => {
-  const key = import.meta.env.VITE_GEMINI_API_KEY || (process.env as any).API_KEY || "";
-  if (!key || key === "undefined" || key === "PLACEHOLDER_API_KEY") return null;
+  const key =
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    (process.env as any).API_KEY ||
+    "";
+
+  if (!key || key === "undefined" || key === "PLACEHOLDER_API_KEY") {
+    return null;
+  }
   return key;
 };
 
+/**
+ * Instância única do cliente
+ */
+const getClient = () => {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API Key ausente.");
+  return new GoogleGenAI({ apiKey });
+};
+
+/**
+ * Gerar legendas
+ */
 export const generateCaption = async (description: string) => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key ausente.");
-  const genAI = new GoogleGenAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const result = await model.generateContent(`Crie 3 opções de legendas para: ${description}`);
-  return result.response.text();
+  const genAI = getClient();
+
+  const response = await genAI.models.generateContent({
+    model: "gemini-1.5-flash",
+    contents: `Crie 3 opções de legendas para: ${description}`
+  });
+
+  return response.text;
 };
 
-export const generateBulkCopies = async (theme: string, data: { server: string; price: string }) => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key ausente.");
-  const genAI = new GoogleGenAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const prompt = `Gere 20 variações de mensagens para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne um array JSON.`;
-  const result = await model.generateContent(prompt);
-  try { return JSON.parse(result.response.text() || '[]'); } catch (e) { return ["Erro na IA"]; }
-};
-
-export const analyzeAd = async (imageBuffer: string, text: string) => {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
-  const genAI = new GoogleGenAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const imagePart = { inlineData: { data: imageBuffer.split(',')[1], mimeType: 'image/jpeg' } };
-  const result = await model.generateContent([imagePart, `Analise este anúncio: "${text}"`]);
-  return result.response.text();
-};
-
-export const getBroadcastsForGames = async (gamesList: string[]) => {
-  const apiKey = getApiKey();
-  if (!apiKey) return [];
-  const genAI = new GoogleGenAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const result = await model.generateContent(`Canais para: ${gamesList.join(', ')}`);
-  return [result.response.text()];
-};
+/**
+ * Gerar múltipla*
