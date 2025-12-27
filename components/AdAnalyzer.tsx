@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { analyzeAd, generateVisual } from '../services/geminiService';
+import { analyzeAd } from '../services/geminiService';
 
 interface AdAnalysis {
   strengths: string[];
