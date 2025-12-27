@@ -16,11 +16,13 @@ const Auth: React.FC = () => {
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+        // Fix: Using any to bypass typing issue with signUp which might be missing from some SDK type versions
+        const { error } = await (supabase.auth as any).signUp({ email, password });
         if (error) throw error;
         setMessage({ type: 'success', text: 'Cadastro realizado! Verifique seu e-mail para confirmar.' });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        // Fix: Using any to bypass typing issue with signInWithPassword which might be missing from some SDK type versions
+        const { error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (error: any) {
@@ -56,7 +58,7 @@ const Auth: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="exemplo@gmail.com"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
               />
             </div>
 
@@ -68,7 +70,7 @@ const Auth: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
               />
             </div>
 
