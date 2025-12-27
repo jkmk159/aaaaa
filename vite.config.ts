@@ -2,18 +2,18 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  // Carrega variáveis do .env e também do ambiente do sistema (GitHub Actions)
+  // Isso carrega variáveis do .env + variáveis do GitHub Actions (process.env)
   const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
   
   return {
     plugins: [react()],
     define: {
-      // Mapeamento total para garantir que o navegador encontre as chaves
+      // MAPEAMENTO TOTAL: Garante que o navegador ache a chave de qualquer forma
       'process.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       
-      // Supabase - Resolvendo erro 422 e falhas de conexão
+      // Supabase - Resolve o erro 422 de login
       'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ""),
       'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || ""),
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ""),
