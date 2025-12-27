@@ -8,14 +8,16 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      // MAPEAMENTO MÚLTIPLO: Garante que o código funcione não importa como a variável é chamada
+      // Isso garante que o navegador encontre a chave em qualquer "idioma" (process ou import.meta)
       'process.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || ""),
       
-      // Supabase
+      // Supabase - Corrigindo para evitar o erro 422
       'process.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ""),
       'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || ""),
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || ""),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || ""),
     },
     build: {
       outDir: 'dist',
