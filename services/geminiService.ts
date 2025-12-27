@@ -39,4 +39,5 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * Gerar múltipla*
+ * Gerar múltiplas mensagens (bulk)
+ */
