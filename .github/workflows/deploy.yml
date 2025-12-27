@@ -36,6 +36,10 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./dist/
           server-dir: ./public_html/
+          # Adicione estas linhas para evitar o Timeout
+          protocol: ftp
+          port: 21
+          dangerous-clean-slate: true
           # Ativado para remover arquivos padrão da Hostinger (default.php)
           dangerous-clean-slate: true 
           # Garante que arquivos ocultos como .htaccess sejam enviados
