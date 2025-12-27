@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Função auxiliar para obter a chave de forma segura
 const getApiKey = () => {
-  const key = process.env.API_KEY;
+  const key = import.meta.env.VITE_API_KEY;
   if (!key || key === "" || key === "undefined") return null;
   return key;
 };
