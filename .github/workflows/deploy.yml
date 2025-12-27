@@ -23,6 +23,7 @@ jobs:
       - name: Build Project
         run: npm run build
         env:
+          # É aqui que o GitHub "injeta" a chave no Vite
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
