@@ -17,7 +17,7 @@ export const generateCaption = async (description: string) => {
 
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-1.5-flash',
     contents: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas.`,
     config: {
       temperature: 0.8,
@@ -34,7 +34,7 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
   const prompt = `Gere EXATAMENTE 20 variações de mensagens de vendas para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON de strings.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-1.5-flash',
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -102,7 +102,7 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
   };
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-1.5-flash',
     contents: { parts: [imagePart, { text: `Analise este anúncio: "${text}" e retorne JSON com strengths, improvements, optimizedText e visualPrompt.` }] },
     config: {
       responseMimeType: "application/json",
@@ -129,7 +129,7 @@ export const getBroadcastsForGames = async (gamesList: string[]) => {
   const ai = new GoogleGenAI({ apiKey });
   const prompt = `Canais de transmissão para: ${gamesList.join(', ')}. Retorne apenas array JSON de strings.`;
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-1.5-flash',
     contents: prompt,
     config: {
       responseMimeType: "application/json",
