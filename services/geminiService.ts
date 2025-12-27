@@ -141,3 +141,9 @@ export const getBroadcastsForGames = async (gamesList: string[]) => {
   });
   try { return JSON.parse(response.text || '[]'); } catch { return []; }
 };
+
+const getApiKey = () => {
+  const key = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
+  console.log("Debug - Chave encontrada:", key ? "Sim (começa com " + key.substring(0,5) + ")" : "Não");
+  return key;
+};
