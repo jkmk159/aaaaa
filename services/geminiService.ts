@@ -1,95 +1,123 @@
-import { GoogleGenAI } from "@google/genai";
+// services/geminiService.ts
 
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+/**
+ * Obtém a API Key de forma segura
+ */
 const getApiKey = () => {
-  const key =
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    (process.env as any).API_KEY ||
-    "";
+ const key =
+ import.meta.env.VITE_GEMINI_API_KEY ||
+ (process.env as any).API_KEY ||
+ "";
 
-  if (!key || key === "undefined" || key === "PLACEHOLDER_API_KEY") {
-    return null;
-  }
-  return key;
-};
-
-const getClient = () => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key ausente.");
-  return new GoogleGenAI({ apiKey });
-};
-
-// Gerar legendas
-export const generateCaption = async (description: string) => {
-  const genAI = getClient();
-
-  const response = await genAI.models.generateContent({
-    model: "gemini-1.5-flash",
-    contents: `Crie 3 opções de legendas para: ${description}`
-  });
-
-  return response.text;
+ if (!key || key === "undefined" || key === "PLACEHOLDER_API_KEY") {
+ return null;
+ }
+ return key;
 };
 
 /**
- * Gerar múltiplas mensagens (bulk)
+ * Cria o cliente da API do Gemini
+ */
+const getClient = () => {
+ const apiKey = getApiKey();
+ if (!apiKey) throw new Error("API Key ausente.");
+ return new GoogleGenerativeAI(apiKey);
+};
+
+/**
+ * Obtém o modelo principal (ajuste o nome se quiser outro modelo)
+ */
+const getModel = () =>
+ getClient().getGenerativeModel({ model: "gemini-1.5-flash" });
+
+/**
+ * Gera legendas para anúncios
+ */
+export const generateCaption = async (description: string) => {
+ const model = getModel();
+
+ const response = await model.generateContent(
+ `Crie 3 opções de legendas curtas e criativas para o seguinte anúncio, em português, 
+ focadas em conversão e com CTA claro:
+ "${description}"`
+ );
+
+ return response.response.text();
+};
+
+/**
+ * Gera múltiplas variações de mensagens (bulk)
  */
 export const generateBulkCopies = async (
-  theme: string,
-  data: { server: string; price: string }
+ theme: string,
+ data: { server: string; price: string }
 ) => {
-  const genAI = getClient();
+ const model = getModel();
 
-  const prompt = `
-Gere 20 variações de mensagens para:
+ const prompt = `
+Gere 20 variações de mensagens curtas para anúncio, em português, com base nas informações:
 Tema: "${theme}"
 Servidor: ${data.server}
 Preço: ${data.price}
 
-Retorne SOMENTE um array JSON de strings.
+Regras:
+- Cada mensagem em uma linha separada.
+- Tom persuasivo, objetivo, com foco em cliques.
+- Inclua chamadas para ação (CTA), por exemplo: "Assine agora", "Garanta já", etc.
 `;
 
-  const response = await genAI.models.generateContent({
-    model: "gemini-1.5-flash",
-    contents: prompt
-  });
+ const response = await model.generateContent(prompt);
+ const text = response.response.text();
 
-  try {
-    return JSON.parse(response.text || "[]");
-  } catch {
-    return ["Erro ao interpretar resposta da IA"];
-  }
+ // Opcional: quebra em array de linhas
+ return text
+ .split("\n")
+ .map((line) => line.trim())
+ .filter((line) => !!line);
 };
 
-// Analisar anúncio com imagem
-export const analyzeAd = async (imageBase64: string, text: string) => {
-  const genAI = getClient();
+/**
+ * Gera análise de anúncio (ex.: para o componente AdAnalyzer)
+ */
+export const generateAdAnalysis = async (description: string) => {
+ const model = getModel();
 
-  const imagePart = {
-    inlineData: {
-      data: imageBase64.split(",")[1],
-      mimeType: "image/jpeg"
-    }
-  };
+ const prompt = `
+Você é um especialista em marketing digital. 
+Analise o seguinte anúncio e responda em português com:
+1) Pontos fortes
+2) Pontos fracos
+3) Sugestões de melhoria (título, copy, CTA, oferta).
 
-  const response = await genAI.models.generateContent({
-    model: "gemini-1.5-flash",
-    contents: [
-      imagePart,
-      { text: `Analise este anúncio: "${text}"` }
-    ]
-  });
+Anúncio:
+"${description}"
+`;
 
-  return response.text;
+ const response = await model.generateContent(prompt);
+ return response.response.text();
 };
 
-// Sugerir canais para jogos
-export const getBroadcastsForGames = async (gamesList: string[]) => {
-  const genAI = getClient();
+/**
+ * Exemplo de função para "visual" (se o seu AdAnalyzer usa generateVisual)
+ * IMPORTANTE: a API de imagens do Gemini ainda está mudando; aqui é só um stub de texto.
+ * Se você não usar isso, pode remover e retirar o import em AdAnalyzer.tsx.
+ */
+export const generateVisual = async (description: string) => {
+ const model = getModel();
 
-  const response = await genAI.models.generateContent({
-    model: "gemini-1.5-flash",
-    contents: `Informe canais indicados para transmitir: ${gamesList.join(", ")}`
-  });
+ const prompt = `
+Gere uma sugestão de conceito visual para um criativo de anúncio com base na descrição:
+"${description}"
 
-  return [response.text];
+Responda em português, descrevendo:
+- Cena principal
+- Elementos visuais
+- Cores
+- Estilo geral
+`;
+
+ const response = await model.generateContent(prompt);
+ return response.response.text();
 };
