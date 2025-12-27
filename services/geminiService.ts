@@ -1,8 +1,20 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Função auxiliar para obter a chave de forma segura
+const getApiKey = () => {
+  const key = process.env.API_KEY;
+  if (!key || key === "" || key === "undefined") return null;
+  return key;
+};
+
 export const generateCaption = async (description: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("API Key ausente. Verifique os Secrets do GitHub e faça um novo deploy.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas.`,
@@ -14,17 +26,11 @@ export const generateCaption = async (description: string) => {
 };
 
 export const generateBulkCopies = async (theme: string, data: { server: string; agent: string; price: string; period: string }) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Você é um copywriter de elite especializado em Marketing Direto e vendas de Streaming/IPTV.
-  Gere EXATAMENTE 20 variações de mensagens de vendas altamente trabalhadas para o tema: "${theme}".
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API Key não configurada.");
 
-  DADOS DISPONÍVEIS:
-  - Nome do Servidor: ${data.server || 'IPTV Premium'}
-  - Atendente: ${data.agent || 'Consultor Especialista'}
-  - Valor sugerido: R$ ${data.price || '35,00'}
-  - Período: ${data.period}
-
-  Retorne as mensagens em um array JSON de strings.`;
+  const ai = new GoogleGenAI({ apiKey });
+  const prompt = `Gere EXATAMENTE 20 variações de mensagens de vendas para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON de strings.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -41,12 +47,15 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
   try {
     return JSON.parse(response.text || '[]');
   } catch (e) {
-    return ["Erro ao gerar variações. Tente novamente."];
+    return ["Erro ao formatar resposta da IA."];
   }
 };
 
 export const generateVisual = async (prompt: string, originalImageBase64: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+
+  const ai = new GoogleGenAI({ apiKey });
   const imagePart = {
     inlineData: {
       data: originalImageBase64.split(',')[1],
@@ -59,7 +68,7 @@ export const generateVisual = async (prompt: string, originalImageBase64: string
     contents: { 
       parts: [
         imagePart, 
-        { text: `Modify this image according to these instructions: ${prompt}. Maintain brand identity.` }
+        { text: prompt }
       ] 
     },
     config: {
@@ -80,11 +89,10 @@ export const generateVisual = async (prompt: string, originalImageBase64: string
 };
 
 export const analyzeAd = async (imageBuffer: string, text: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Analise este anúncio de IPTV.
-  Texto: "${text}"
-  Retorne um JSON com strengths, improvements, optimizedText e visualPrompt.`;
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
 
+  const ai = new GoogleGenAI({ apiKey });
   const imagePart = {
     inlineData: {
       data: imageBuffer.split(',')[1],
@@ -94,7 +102,7 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: { parts: [imagePart, { text: prompt }] },
+    contents: { parts: [imagePart, { text: `Analise este anúncio: "${text}" e retorne JSON com strengths, improvements, optimizedText e visualPrompt.` }] },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -114,8 +122,11 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
 };
 
 export const getBroadcastsForGames = async (gamesList: string[]) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Canais de transmissão para: ${gamesList.join(', ')}. Retorne apenas array JSON.`;
+  const apiKey = getApiKey();
+  if (!apiKey || gamesList.length === 0) return [];
+
+  const ai = new GoogleGenAI({ apiKey });
+  const prompt = `Canais de transmissão para: ${gamesList.join(', ')}. Retorne apenas array JSON de strings.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
