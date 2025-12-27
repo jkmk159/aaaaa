@@ -7,9 +7,10 @@ interface SidebarProps {
   currentView: ViewType;
   onNavigate: (view: ViewType) => void;
   userEmail?: string;
+  isPro?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, isPro }) => {
   const [isGeneratorsOpen, setIsGeneratorsOpen] = useState(true);
   const [isAdsOpen, setIsAdsOpen] = useState(true);
   const [isBeOwnerOpen, setIsBeOwnerOpen] = useState(true);
@@ -113,7 +114,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail })
           </div>
         </div>
 
-        {/* SEJA DONO (RESTAURADO) */}
+        {/* SEJA DONO */}
         <div>
           <button onClick={() => setIsBeOwnerOpen(!isBeOwnerOpen)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold text-gray-400 hover:bg-gray-800 transition-all">
             <div className="flex items-center"><span className="mr-3 text-lg">👑</span> Seja Dono</div>
@@ -137,13 +138,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail })
 
       <div className="p-4 border-t border-gray-800 bg-[#0f121a] space-y-3">
         <div className="flex items-center space-x-3 bg-black/30 p-3 rounded-2xl border border-white/5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center font-black italic shadow-lg text-xs text-white">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black italic shadow-lg text-xs text-white ${isPro ? 'bg-gradient-to-br from-blue-500 to-blue-700' : 'bg-gray-700'}`}>
             {userEmail?.[0].toUpperCase()}
           </div>
           <div className="flex-1 overflow-hidden">
             <p className="text-[10px] font-black uppercase tracking-tight leading-none truncate text-white">{userEmail?.split('@')[0]}</p>
-            <p className="text-[8px] text-blue-500 font-bold uppercase tracking-widest mt-1">Status Ativo</p>
+            <p className={`text-[8px] font-bold uppercase tracking-widest mt-1 ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>
+              {isPro ? 'STATUS PRO' : 'CONTA TRIAL'}
+            </p>
           </div>
+        </div>
+        <div className="px-2 py-1 bg-blue-500/5 rounded-lg border border-blue-500/10 text-center">
+           <p className="text-[7px] font-black text-blue-500/50 uppercase tracking-[0.2em]">Build v2.1.0 - AI Otimizada</p>
         </div>
         <button 
           onClick={handleLogout}
