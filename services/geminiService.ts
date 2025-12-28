@@ -1,15 +1,12 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Helper para pegar as chaves de forma segura no Vite
-const getApiKey = () => process.env.API_KEY || "";
-const getOrshotKey = () => (process.env as any).ORSHOT_KEY || "";
-
 /**
- * GERAÇÃO DE TEXTO E ANÁLISE (GEMINI-3-FLASH-PREVIEW)
+ * GERAÇÃO DE TEXTO E ANÁLISE (GEMINI)
  */
 export const generateCaption = async (description: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas. Retorne apenas as opções.` }] }],
@@ -23,91 +20,54 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * GERAÇÃO DE IMAGEM (ORSHOT API - ATUALIZADO CONFORME DOCS)
+ * GERAÇÃO DE IMAGEM (SUBNP FREE API)
+ * Utiliza o endpoint gratuito da SubNP.
+ * Documentação: https://subnp.com/pt/free-api
  */
 export const generateVisual = async (prompt: string, _originalImageBase64?: string) => {
-  const orshotKey = getOrshotKey();
-  
-  if (!orshotKey || orshotKey === "") {
-    throw new Error("Chave VITE_ORSHOT_KEY não encontrada.");
-  }
-
   try {
-    // Endpoint oficial para Studio Templates
-    const response = await fetch('https://api.orshot.com/v1/studio/render', { 
+    // Endpoint gratuito da SubNP que não exige Authorization Header
+    const response = await fetch('https://subnp.com/api/free/generate', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${orshotKey}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        "templateId": 2481, // Seu ID confirmado
-        "modifications": {
-          // Mapeamento baseado no seu último exemplo funcional
-          "description": prompt, 
-          "cta": "GERAR AGORA",
-          "discount": "100%",
-          "description_1": "FREE",
-          "description_2": "AI Generated"
-        },
-        "response": {
-          "type": "base64",
-          "format": "png",
-          "scale": 1
-        }
+        prompt: prompt,
+        model: "flux" // Modelos suportados: "flux", "turbo", etc.
       })
     });
 
-    // Impede o SyntaxError ao tratar erros antes de tentar ler o JSON
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Erro na Orshot (${response.status}): ${errorText}`);
+      console.error(`Erro SubNP Free (${response.status}):`, errorText);
+      throw new Error(`Erro na API SubNP: ${response.status}.`);
     }
 
     const data = await response.json();
     
-    // Como você solicitou "base64", a API retorna a string da imagem diretamente
-    if (data.image) {
-      return `data:image/png;base64,${data.image}`;
-    }
-    
-    throw new Error("A Orshot não retornou os dados da imagem.");
-
-  } catch (error: any) {
-    console.error("Falha na geração visual:", error);
-    throw error;
-  }
-};
-
-    // Tratamento para evitar o erro de SyntaxError ao receber HTML de erro
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Erro detalhado Orshot:", errorText);
-      throw new Error(`Erro na Orshot (${response.status}). Verifique o ID do template.`);
-    }
-
-    const data = await response.json();
-    
-    // De acordo com a doc, se o type for base64, a imagem vem na propriedade 'image'
-    if (data.image) {
-      return `data:image/png;base64,${data.image}`;
+    // A API gratuita da SubNP geralmente retorna as imagens em um array ou campo específico
+    if (data.images && data.images.length > 0) {
+      return data.images[0];
     } else if (data.url) {
       return data.url;
+    } else if (data.data && data.data[0]?.url) {
+      return data.data[0].url;
     }
     
-    throw new Error("A Orshot não retornou dados de imagem válidos.");
+    throw new Error("A SubNP não retornou uma imagem válida. Verifique se o prompt é aceito.");
   } catch (error: any) {
-    console.error("Falha Crítica Orshot:", error);
+    console.error("Erro na geração de imagem SubNP Free:", error);
     throw error;
   }
 };
 
 /**
- * ANÁLISE DE ANÚNCIOS (VISION)
+ * ANÁLISE DE ANÚNCIOS (VISION COM GEMINI PRO)
  */
 export const analyzeAd = async (imageBuffer: string, text: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const imagePart = {
       inlineData: {
         data: imageBuffer.split(',')[1],
@@ -116,7 +76,7 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
     };
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: { 
         parts: [
           imagePart, 
@@ -150,10 +110,10 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
  */
 export const generateBulkCopies = async (theme: string, data: { server: string; price: string }) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: `Gere 20 variações de mensagens para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON.` }] }],
+      contents: [{ parts: [{ text: `Gere 20 variações de mensagens persuasivas para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne apenas um array JSON de strings.` }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -163,7 +123,8 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
       }
     });
     return JSON.parse(response.text || '[]');
-  } catch {
+  } catch (error) {
+    console.error("Erro Bulk Copies:", error);
     return [];
   }
 };
@@ -173,10 +134,10 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
  */
 export const getBroadcastsForGames = async (gamesList: string[]) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: getApiKey() });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: `Liste canais de transmissão para: ${gamesList.join(', ')}. Retorne array JSON.` }] }],
+      contents: [{ parts: [{ text: `Liste canais de transmissão brasileiros para: ${gamesList.join(', ')}. Retorne array JSON de strings.` }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: {
