@@ -27,34 +27,47 @@ export const generateCaption = async (description: string) => {
 
 export const generateVisual = async (prompt: string) => {
   try {
-    // Usando o endpoint público da SubNP
-    const response = await fetch('https://subnp.com/api/free/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: prompt,
-        model: "flux"
-      })
-    });
+    // 🔥 AGORA chamamos a Edge Function do Supabase
+    const response = await fetch(
+      "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+        }),
+      }
+    );
 
     if (!response.ok) {
-      throw new Error(`Erro na SubNP: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Erro na Edge Function: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    
-    // Verifique se a SubNP retorna o campo 'image' ou 'url'
-    if (data.image) return `data:image/png;base64,${data.image}`;
-    if (data.url) return data.url;
-    
-    throw new Error("Resposta da SubNP sem dados de imagem.");
+
+    // 🔁 Tratamento seguro da resposta
+    if (data.image) {
+      return `data:image/png;base64,${data.image}`;
+    }
+
+    if (data.images?.length) {
+      return `data:image/png;base64,${data.images[0]}`;
+    }
+
+    if (data.url) {
+      return data.url;
+    }
+
+    throw new Error("Resposta da API sem dados de imagem.");
   } catch (error: any) {
-    console.error("Falha na geração pública:", error);
+    console.error("Falha na geração visual:", error);
     throw error;
   }
 };
+
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION COM GEMINI PRO)
