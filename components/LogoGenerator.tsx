@@ -137,8 +137,9 @@ const LogoGenerator: React.FC = () => {
             )}
             {(loading || editing) && (
               <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4 z-20">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 italic">Renderizando via SubNP...</p>
+    <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 italic">
+      Renderizando via SubNP...</p>
               </div>
             )}
           </div>
