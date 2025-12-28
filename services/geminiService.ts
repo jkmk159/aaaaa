@@ -23,11 +23,14 @@ export const generateCaption = async (description: string) => {
  * GERAÇÃO DE IMAGEM (VIA SUBNP - ROTA COMPATÍVEL)
  * Utiliza o endpoint oficial para evitar erros de cota e CORS encontrados no endpoint público.
  */
+// No geminiService.ts
+
 export const generateVisual = async (prompt: string) => {
-  const apiKey = (process as any).env.ORSHOT_KEY;
+  // O seu vite.config mapeia VITE_ORSHOT_KEY para process.env.ORSHOT_KEY
+  const apiKey = (process as any).env.ORSHOT_KEY; 
   
   if (!apiKey) {
-    throw new Error("Chave da API de imagem (ORSHOT_KEY) não configurada.");
+    throw new Error("Chave da API (ORSHOT_KEY) não encontrada.");
   }
 
   try {
@@ -48,22 +51,19 @@ export const generateVisual = async (prompt: string) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`SubNP Error: ${response.status} - ${errorText}`);
+      throw new Error(`Erro SubNP: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
     
-    // Formato padrão de resposta SubNP/OpenAI
-    if (data.data && data.data[0]?.b64_json) {
+    // A SubNP retorna a imagem no campo b64_json dentro do array data
+    if (data.data && data.data[0].b64_json) {
       return `data:image/png;base64,${data.data[0].b64_json}`;
-    } else if (data.data && data.data[0]?.url) {
-      return data.data[0].url;
     }
     
-    throw new Error("Resposta da SubNP sem dados de imagem.");
-
+    throw new Error("Resposta inválida da SubNP.");
   } catch (error: any) {
-    console.error("Erro na SubNP:", error);
+    console.error("Falha na SubNP:", error);
     throw error;
   }
 };
