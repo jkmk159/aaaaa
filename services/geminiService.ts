@@ -70,8 +70,10 @@ export const generateVisual = async (prompt: string) => {
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION COM GEMINI PRO)
+ * Refatorado para receber objeto e evitar erros de parâmetros no TS.
  */
-export const analyzeAd = async (imageBuffer: string, text: string) => {
+export const analyzeAd = async (params: { imageBuffer: string, text: string }) => {
+  const { imageBuffer, text } = params;
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const imagePart = {
