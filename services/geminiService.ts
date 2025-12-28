@@ -29,33 +29,55 @@ export const generateVisual = async (prompt: string, _originalImageBase64?: stri
   const orshotKey = getOrshotKey();
   
   if (!orshotKey || orshotKey === "") {
-    throw new Error("Chave VITE_ORSHOT_KEY não encontrada. Verifique as configurações do GitHub Actions.");
+    throw new Error("Chave VITE_ORSHOT_KEY não encontrada.");
   }
 
   try {
-    // Endpoint oficial e correto conforme a documentação fornecida
-    const response = await fetch('https://api.orshot.com/v1/studio/render', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    Authorization: 'Bearer os-xngs04bhanoo68ie16jfh50w95ynz3'
-  },
-  body: JSON.stringify({
-    "templateId": 2481,
-    "modifications": {
-      "description": "Get",
-      "cta": "USE CODE: BLCK",
-      "discount": "40%",
-      "description_1": "off",
-      "description_2": "+ Free Shipping"
-    },
-    "response" : {
-      "type": "base64",
-      "format": "png",
-      "scale": 1
+    // Endpoint oficial para Studio Templates
+    const response = await fetch('https://api.orshot.com/v1/studio/render', { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${orshotKey}`
+      },
+      body: JSON.stringify({
+        "templateId": 2481, // Seu ID confirmado
+        "modifications": {
+          // Mapeamento baseado no seu último exemplo funcional
+          "description": prompt, 
+          "cta": "GERAR AGORA",
+          "discount": "100%",
+          "description_1": "FREE",
+          "description_2": "AI Generated"
+        },
+        "response": {
+          "type": "base64",
+          "format": "png",
+          "scale": 1
+        }
+      })
+    });
+
+    // Impede o SyntaxError ao tratar erros antes de tentar ler o JSON
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Erro na Orshot (${response.status}): ${errorText}`);
     }
-  })
-});
+
+    const data = await response.json();
+    
+    // Como você solicitou "base64", a API retorna a string da imagem diretamente
+    if (data.image) {
+      return `data:image/png;base64,${data.image}`;
+    }
+    
+    throw new Error("A Orshot não retornou os dados da imagem.");
+
+  } catch (error: any) {
+    console.error("Falha na geração visual:", error);
+    throw error;
+  }
+};
 
     // Tratamento para evitar o erro de SyntaxError ao receber HTML de erro
     if (!response.ok) {
