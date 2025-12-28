@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 /**
  * GERAÇÃO DE TEXTO E ANÁLISE (GEMINI-3-FLASH-PREVIEW)
- * Modelo de última geração para tarefas de texto, código e raciocínio.
+ * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const generateCaption = async (description: string) => {
   try {
@@ -21,57 +21,55 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * GERAÇÃO DE IMAGEM (GEMINI-2.5-FLASH-IMAGE)
- * Único modelo da série Flash capaz de gerar imagens a partir de texto.
+ * GERAÇÃO DE IMAGEM (ORSHOT API)
+ * Utiliza: process.env.ORSHOT_KEY (VITE_ORSHOT_KEY)
  */
 export const generateVisual = async (prompt: string, originalImageBase64?: string) => {
-  if (!process.env.API_KEY) {
-    throw new Error("Chave de API do Gemini não configurada.");
+  const orshotKey = (process as any).env.ORSHOT_KEY;
+  
+  if (!orshotKey) {
+    throw new Error("Chave da Orshot (VITE_ORSHOT_KEY) não configurada.");
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const parts: any[] = [{ text: prompt }];
-
-    if (originalImageBase64) {
-      parts.push({
-        inlineData: {
-          data: originalImageBase64.split(',')[1],
-          mimeType: 'image/jpeg'
-        }
-      });
-    }
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts: parts },
-      config: {
-        imageConfig: {
-          aspectRatio: "1:1"
-        }
-      }
+    const response = await fetch('https://api.orshot.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${orshotKey}`
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        model: "flux-1-dev",
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
+      })
     });
 
-    if (!response.candidates?.[0]?.content?.parts) {
-      throw new Error("A IA não retornou partes de conteúdo válidas.");
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || "Falha na API da Orshot");
     }
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+    const data = await response.json();
+    
+    if (data.data && data.data[0]?.b64_json) {
+      return `data:image/png;base64,${data.data[0].b64_json}`;
+    } else if (data.data && data.data[0]?.url) {
+      return data.data[0].url;
     }
     
-    throw new Error("O modelo não gerou uma imagem. Tente ajustar o prompt.");
+    throw new Error("A Orshot não retornou uma imagem válida.");
   } catch (error: any) {
-    console.error("Erro na geração de imagem Gemini:", error);
+    console.error("Erro na geração de imagem Orshot:", error);
     throw error;
   }
 };
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION)
- * Usa o Gemini 3 Flash para analisar a imagem e sugerir melhorias.
+ * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const analyzeAd = async (imageBuffer: string, text: string) => {
   try {
@@ -88,7 +86,7 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
       contents: { 
         parts: [
           imagePart, 
-          { text: `Analise este anúncio de IPTV (texto: "${text}") e retorne JSON com pontos fortes (strengths), melhorias (improvements), texto otimizado (optimizedText) e um prompt visual (visualPrompt) para recriar esta arte com mais qualidade.` }
+          { text: `Analise este anúncio de IPTV (texto: "${text}") e retorne JSON com pontos fortes (strengths), melhorias (improvements), texto otimizado (optimizedText) e um prompt visual (visualPrompt) para recriar esta arte com mais qualidade. O prompt visual deve ser em inglês e muito detalhado.` }
         ] 
       },
       config: {
@@ -115,6 +113,7 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
 
 /**
  * GERAÇÃO EM MASSA DE COPYS
+ * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const generateBulkCopies = async (theme: string, data: { server: string; price: string }) => {
   try {
@@ -138,6 +137,7 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
 
 /**
  * BUSCA DE TRANSMISSÕES
+ * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const getBroadcastsForGames = async (gamesList: string[]) => {
   try {
