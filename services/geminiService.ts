@@ -42,7 +42,7 @@ export const generateVisual = async (prompt: string, _originalImageBase64?: stri
       },
       body: JSON.stringify({
         // IMPORTANTE: Substitua pelo ID do seu template criado no painel Orshot
-        templateId: "SEU_TEMPLATE_ID_AQUI", 
+        templateId: "2481", 
         response: {
           type: "base64", // Retorna a imagem diretamente em base64
           format: "png"
