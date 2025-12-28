@@ -20,56 +20,52 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * GERAÇÃO DE IMAGEM (HÍBRIDA: SUBNP + GEMINI FALLBACK)
- * Tenta usar a SubNP primeiro (sem headers para evitar CORS).
- * Se falhar, usa o Gemini 2.5 Flash Image.
+ * GERAÇÃO DE IMAGEM (VIA SUBNP - ROTA COMPATÍVEL)
+ * Utiliza o endpoint oficial para evitar erros de cota e CORS encontrados no endpoint público.
  */
-export const generateVisual = async (prompt: string, _originalImageBase64?: string) => {
-  // 1. TENTATIVA VIA SUBNP (Simple Request para evitar CORS preflight)
+export const generateVisual = async (prompt: string) => {
+  const apiKey = (process as any).env.ORSHOT_KEY;
+  
+  if (!apiKey) {
+    throw new Error("Chave da API de imagem (ORSHOT_KEY) não configurada.");
+  }
+
   try {
-    const response = await fetch('https://subnp.com/api/free/generate', {
+    const response = await fetch('https://api.subnp.com/v1/images/generations', {
       method: 'POST',
-      // NOTA: Não enviamos 'Content-Type' para evitar o erro de CORS 'preflight'
-      // O corpo da requisição é enviado como string JSON pura.
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
       body: JSON.stringify({
+        model: "flux",
         prompt: prompt,
-        model: "flux"
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json"
       })
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.images && data.images.length > 0) return data.images[0];
-      if (data.url) return data.url;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`SubNP Error: ${response.status} - ${errorText}`);
     }
-  } catch (subnpError) {
-    console.warn("SubNP falhou ou bloqueou via CORS. Ativando Fallback Gemini...", subnpError);
-  }
 
-  // 2. FALLBACK VIA GEMINI 2.5 FLASH IMAGE (Garantia de Funcionamento)
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: prompt }]
-      },
-      config: {
-        imageConfig: { aspectRatio: "1:1" }
-      }
-    });
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+    const data = await response.json();
+    
+    // Formato padrão de resposta SubNP/OpenAI
+    if (data.data && data.data[0]?.b64_json) {
+      return `data:image/png;base64,${data.data[0].b64_json}`;
+    } else if (data.data && data.data[0]?.url) {
+      return data.data[0].url;
     }
-  } catch (geminiError) {
-    console.error("Erro crítico em ambos os provedores de imagem:", geminiError);
-    throw new Error("Não foi possível gerar a imagem no momento. Tente um prompt diferente.");
+    
+    throw new Error("Resposta da SubNP sem dados de imagem.");
+
+  } catch (error: any) {
+    console.error("Erro na SubNP:", error);
+    throw error;
   }
-  
-  return null;
 };
 
 /**
