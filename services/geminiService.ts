@@ -34,25 +34,28 @@ export const generateVisual = async (prompt: string, _originalImageBase64?: stri
 
   try {
     // Endpoint oficial e correto conforme a documentação fornecida
-    const response = await fetch('https://api.orshot.com/v1/generate/images', { 
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${orshotKey}` // Autenticação Bearer obrigatória
-      },
-      body: JSON.stringify({
-        // IMPORTANTE: Substitua pelo ID do seu template criado no painel Orshot
-        templateId: "2481", 
-        response: {
-          type: "base64", // Retorna a imagem diretamente em base64
-          format: "png"
-        },
-        modifications: {
-          // Nome da variável que você definiu no seu template Orshot
-          "prompt_text": prompt 
-        }
-      })
-    });
+    const response = await fetch('https://api.orshot.com/v1/studio/render', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer os-xngs04bhanoo68ie16jfh50w95ynz3'
+  },
+  body: JSON.stringify({
+    "templateId": 2481,
+    "modifications": {
+      "description": "Get",
+      "cta": "USE CODE: BLCK",
+      "discount": "40%",
+      "description_1": "off",
+      "description_2": "+ Free Shipping"
+    },
+    "response" : {
+      "type": "base64",
+      "format": "png",
+      "scale": 1
+    }
+  })
+});
 
     // Tratamento para evitar o erro de SyntaxError ao receber HTML de erro
     if (!response.ok) {
