@@ -35,20 +35,19 @@ export const generateVisual = async (prompt: string, _originalImageBase64?: stri
 
   try {
     // Tentando o endpoint padrão compatível com OpenAI da Orshot
-    const response = await fetch('https://api.orshot.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${orshotKey}`
-      },
-      body: JSON.stringify({
-        prompt: prompt,
-        model: "flux-1-dev",
-        n: 1,
-        size: "1024x1024",
-        response_format: "b64_json"
-      })
-    });
+    const response = await fetch('https://api.orshot.com/v1/generation', { 
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${orshotKey}`
+  },
+  body: JSON.stringify({
+    prompt: prompt,
+    model: "flux-1-dev", // Verifique se este modelo está ativo na sua conta
+    width: 1024,
+    height: 1024,
+  })
+});
 
     // Se não for OK, tentamos ler o erro antes de falhar no JSON
     if (!response.ok) {
