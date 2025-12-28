@@ -1,13 +1,16 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Helper para pegar as chaves de forma segura no Vite
+const getApiKey = () => process.env.API_KEY || "";
+const getOrshotKey = () => (process.env as any).ORSHOT_KEY || "";
+
 /**
  * GERAÇÃO DE TEXTO E ANÁLISE (GEMINI-3-FLASH-PREVIEW)
- * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const generateCaption = async (description: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas. Retorne apenas as opções.` }] }],
@@ -22,16 +25,16 @@ export const generateCaption = async (description: string) => {
 
 /**
  * GERAÇÃO DE IMAGEM (ORSHOT API)
- * Utiliza: process.env.ORSHOT_KEY (VITE_ORSHOT_KEY)
  */
-export const generateVisual = async (prompt: string, originalImageBase64?: string) => {
-  const orshotKey = (process as any).env.ORSHOT_KEY;
+export const generateVisual = async (prompt: string, _originalImageBase64?: string) => {
+  const orshotKey = getOrshotKey();
   
-  if (!orshotKey) {
-    throw new Error("Chave da Orshot (VITE_ORSHOT_KEY) não configurada.");
+  if (!orshotKey || orshotKey === "") {
+    throw new Error("Chave VITE_ORSHOT_KEY não encontrada. Verifique as configurações do GitHub Actions.");
   }
 
   try {
+    // Tentando o endpoint padrão compatível com OpenAI da Orshot
     const response = await fetch('https://api.orshot.com/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -47,9 +50,17 @@ export const generateVisual = async (prompt: string, originalImageBase64?: strin
       })
     });
 
+    // Se não for OK, tentamos ler o erro antes de falhar no JSON
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || "Falha na API da Orshot");
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `Erro API Orshot: ${response.status}`);
+      } else {
+        const errorText = await response.text();
+        console.error("Resposta não-JSON da Orshot:", errorText);
+        throw new Error(`Erro de rede Orshot (${response.status}). O serviço pode estar instável.`);
+      }
     }
 
     const data = await response.json();
@@ -60,20 +71,19 @@ export const generateVisual = async (prompt: string, originalImageBase64?: strin
       return data.data[0].url;
     }
     
-    throw new Error("A Orshot não retornou uma imagem válida.");
+    throw new Error("A Orshot não retornou dados de imagem válidos.");
   } catch (error: any) {
-    console.error("Erro na geração de imagem Orshot:", error);
+    console.error("Falha Crítica Orshot:", error);
     throw error;
   }
 };
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION)
- * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const analyzeAd = async (imageBuffer: string, text: string) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const imagePart = {
       inlineData: {
         data: imageBuffer.split(',')[1],
@@ -113,11 +123,10 @@ export const analyzeAd = async (imageBuffer: string, text: string) => {
 
 /**
  * GERAÇÃO EM MASSA DE COPYS
- * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const generateBulkCopies = async (theme: string, data: { server: string; price: string }) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: `Gere 20 variações de mensagens para: "${theme}". Servidor: ${data.server}, Preço: ${data.price}. Retorne array JSON.` }] }],
@@ -137,11 +146,10 @@ export const generateBulkCopies = async (theme: string, data: { server: string; 
 
 /**
  * BUSCA DE TRANSMISSÕES
- * Utiliza: process.env.API_KEY (VITE_GEMINI_API_KEY)
  */
 export const getBroadcastsForGames = async (gamesList: string[]) => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [{ parts: [{ text: `Liste canais de transmissão para: ${gamesList.join(', ')}. Retorne array JSON.` }] }],
