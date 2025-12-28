@@ -26,33 +26,32 @@ export const generateCaption = async (description: string) => {
 // No geminiService.ts
 
 export const generateVisual = async (prompt: string) => {
-  const apiKey = (process as any).env.ORSHOT_KEY; // Mapeado no seu vite.config
-  
   try {
-    const response = await fetch('https://api.subnp.com/v1/images/generations', {
+    // Usando o endpoint público da SubNP
+    const response = await fetch('https://subnp.com/api/free/generate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "flux",
         prompt: prompt,
-        n: 1,
-        size: "1024x1024",
-        response_format: "b64_json" // Retorna a imagem direto para o site
+        model: "flux"
       })
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Erro SubNP: ${response.status}`);
+      throw new Error(`Erro na SubNP: ${response.status}`);
     }
 
     const data = await response.json();
-    return `data:image/png;base64,${data.data[0].b64_json}`;
-  } catch (error) {
-    console.error("Falha na geração:", error);
+    
+    // Verifique se a SubNP retorna o campo 'image' ou 'url'
+    if (data.image) return `data:image/png;base64,${data.image}`;
+    if (data.url) return data.url;
+    
+    throw new Error("Resposta da SubNP sem dados de imagem.");
+  } catch (error: any) {
+    console.error("Falha na geração pública:", error);
     throw error;
   }
 };
