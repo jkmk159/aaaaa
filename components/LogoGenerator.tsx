@@ -29,18 +29,18 @@ const LogoGenerator: React.FC = () => {
       const prompt = `Professional high-end minimalist logo for an IPTV brand named "${brandName}". 
       Text: "${brandName}". Style: ${style}. Color: ${mainColor}. 
       Industry: ${industry}. Slogan: "${slogan || ''}". ${details}. 
-      Studio lighting, clean background, 4k resolution, centered vector. No text besides brand name.`;
+      Studio lighting, clean background, 4k resolution, centered vector. Masterpiece, high detail.`;
 
       const result = await generateVisual(prompt);
 
       if (result) {
         setGeneratedImageUrl(result);
       } else {
-        alert("O sistema está sobrecarregado. Tente novamente em instantes.");
+        alert("A IA não retornou uma imagem no momento. Verifique sua chave ou cota.");
       }
     } catch (err: any) {
       console.error(err);
-      alert(`Erro na Geração: ${err.message || "Verifique sua conexão."}`);
+      alert(`Erro na Geração: ${err.message || "Verifique a configuração da chave SubNP."}`);
     } finally {
       setLoading(false);
     }
@@ -51,7 +51,7 @@ const LogoGenerator: React.FC = () => {
     setEditing(true);
     try {
       setHistory(prev => [...prev, generatedImageUrl]);
-      const prompt = `Modify this logo for "${brandName}": ${editPrompt}. Maintain style and branding.`;
+      const prompt = `Modify this logo for "${brandName}": ${editPrompt}. Maintain style and brand identity. High quality polish.`;
       const result = await generateVisual(prompt);
       if (result) {
         setGeneratedImageUrl(result);
@@ -87,7 +87,7 @@ const LogoGenerator: React.FC = () => {
           GERADOR DE <span className="text-blue-500">LOGOS PREMIUM</span>
         </h2>
         <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mt-1">
-          SISTEMA HÍBRIDO: SUBNP FREE + GEMINI 2.5
+          POWERED BY SUBNP AI - MODELO FLUX
         </p>
       </header>
 
@@ -121,7 +121,7 @@ const LogoGenerator: React.FC = () => {
             <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Ex: Ícone de TV futurista..." className="w-full h-32 bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm outline-none resize-none focus:border-blue-500 transition-all" />
           </div>
           <button onClick={handleGenerateLogo} disabled={loading || editing} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase text-sm italic tracking-widest shadow-xl shadow-blue-900/20 active:scale-95 transition-all disabled:opacity-50">
-            {loading ? 'SINCROIZANDO COM IA...' : 'GERAR LOGO COM IA'}
+            {loading ? 'SINCRONIZANDO COM SUBNP...' : 'GERAR LOGO PROFISSIONAL'}
           </button>
         </section>
 
@@ -138,7 +138,7 @@ const LogoGenerator: React.FC = () => {
             {(loading || editing) && (
               <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4 z-20">
                 <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 italic">Renderizando sua arte...</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 italic">Renderizando via SubNP...</p>
               </div>
             )}
           </div>
@@ -147,7 +147,7 @@ const LogoGenerator: React.FC = () => {
             <div className="mt-8 w-full max-w-[450px] space-y-4 animate-fade-in">
               <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Refinar design..." className="w-full h-24 bg-black/40 border border-gray-700 rounded-2xl p-4 text-xs font-medium focus:border-blue-500 outline-none" />
               <div className="flex gap-2">
-                <button onClick={handleEditLogo} className="flex-1 bg-white text-black py-4 rounded-xl font-black uppercase text-[10px] italic tracking-widest">REFINAR</button>
+                <button onClick={handleEditLogo} className="flex-1 bg-white text-black py-4 rounded-xl font-black uppercase text-[10px] italic tracking-widest">REFINAR DESIGN</button>
                 <button onClick={downloadLogo} className="bg-blue-600 px-6 rounded-xl text-lg shadow-lg shadow-blue-600/20">📥</button>
               </div>
             </div>
