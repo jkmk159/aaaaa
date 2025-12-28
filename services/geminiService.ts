@@ -25,15 +25,28 @@ export const generateCaption = async (description: string) => {
  */
 // No geminiService.ts
 
+import { supabase } from "@/lib/supabase";
+
 export const generateVisual = async (prompt: string) => {
   try {
-    // 🔥 AGORA chamamos a Edge Function do Supabase
+    // 🔐 Pega a sessão atual do usuário
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Usuário não autenticado");
+    }
+
+    // 🔥 Chamada para a Edge Function PROTEGIDA
     const response = await fetch(
       "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           prompt,
@@ -43,7 +56,9 @@ export const generateVisual = async (prompt: string) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Erro na Edge Function: ${response.status} - ${errorText}`);
+      throw new Error(
+        `Erro na Edge Function: ${response.status} - ${errorText}`
+      );
     }
 
     const data = await response.json();
@@ -61,13 +76,12 @@ export const generateVisual = async (prompt: string) => {
       return data.url;
     }
 
-    throw new Error("Resposta da API sem dados de imagem.");
-  } catch (error: any) {
+    throw new Error("Resposta da API sem imagem.");
+  } catch (error) {
     console.error("Falha na geração visual:", error);
     throw error;
   }
 };
-
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION COM GEMINI PRO)
