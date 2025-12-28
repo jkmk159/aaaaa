@@ -26,13 +26,8 @@ export const generateCaption = async (description: string) => {
 // No geminiService.ts
 
 export const generateVisual = async (prompt: string) => {
-  // O seu vite.config mapeia VITE_ORSHOT_KEY para process.env.ORSHOT_KEY
-  const apiKey = (process as any).env.ORSHOT_KEY; 
+  const apiKey = (process as any).env.ORSHOT_KEY; // Mapeado no seu vite.config
   
-  if (!apiKey) {
-    throw new Error("Chave da API (ORSHOT_KEY) não encontrada.");
-  }
-
   try {
     const response = await fetch('https://api.subnp.com/v1/images/generations', {
       method: 'POST',
@@ -45,25 +40,19 @@ export const generateVisual = async (prompt: string) => {
         prompt: prompt,
         n: 1,
         size: "1024x1024",
-        response_format: "b64_json"
+        response_format: "b64_json" // Retorna a imagem direto para o site
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Erro SubNP: ${response.status} - ${errorText}`);
+      throw new Error(`Erro SubNP: ${response.status}`);
     }
 
     const data = await response.json();
-    
-    // A SubNP retorna a imagem no campo b64_json dentro do array data
-    if (data.data && data.data[0].b64_json) {
-      return `data:image/png;base64,${data.data[0].b64_json}`;
-    }
-    
-    throw new Error("Resposta inválida da SubNP.");
-  } catch (error: any) {
-    console.error("Falha na SubNP:", error);
+    return `data:image/png;base64,${data.data[0].b64_json}`;
+  } catch (error) {
+    console.error("Falha na geração:", error);
     throw error;
   }
 };
