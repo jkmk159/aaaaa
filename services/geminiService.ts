@@ -27,60 +27,28 @@ export const generateCaption = async (description: string) => {
 
 import { supabase } from "../lib/supabase";
 export const generateVisual = async (prompt: string) => {
-  try {
-    // 🔐 Pega a sessão atual do usuário
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
+  const { data: { session } } = await supabase.auth.getSession();
 
-    if (sessionError || !session?.access_token) {
-      throw new Error("Usuário não autenticado");
+  const res = await fetch(
+    "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ prompt }),
     }
+  );
 
-    // 🔥 Chamada para a Edge Function PROTEGIDA
-    const response = await fetch(
-      "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          prompt,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Erro na Edge Function: ${response.status} - ${errorText}`
-      );
-    }
-
-    const data = await response.json();
-
-    // 🔁 Tratamento seguro da resposta
-    if (data.image) {
-      return `data:image/png;base64,${data.image}`;
-    }
-
-    if (data.images?.length) {
-      return `data:image/png;base64,${data.images[0]}`;
-    }
-
-    if (data.url) {
-      return data.url;
-    }
-
-    throw new Error("Resposta da API sem imagem.");
-  } catch (error) {
-    console.error("Falha na geração visual:", error);
-    throw error;
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
   }
+
+  return await res.json();
 };
+
 
 /**
  * ANÁLISE DE ANÚNCIOS (VISION COM GEMINI PRO)
