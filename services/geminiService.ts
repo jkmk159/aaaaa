@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Helper para pegar as chaves de forma segura no Vite
@@ -24,7 +23,7 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * GERAÇÃO DE IMAGEM (ORSHOT API)
+ * GERAÇÃO DE IMAGEM (ORSHOT API - ATUALIZADO CONFORME DOCS)
  */
 export const generateVisual = async (prompt: string, _originalImageBase64?: string) => {
   const orshotKey = getOrshotKey();
@@ -34,40 +33,41 @@ export const generateVisual = async (prompt: string, _originalImageBase64?: stri
   }
 
   try {
-    // Tentando o endpoint padrão compatível com OpenAI da Orshot
-    const response = await fetch('https://api.orshot.com/v1/generation', { 
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${orshotKey}`
-  },
-  body: JSON.stringify({
-    prompt: prompt,
-    model: "flux-1-dev", // Verifique se este modelo está ativo na sua conta
-    width: 1024,
-    height: 1024,
-  })
-});
+    // Endpoint oficial e correto conforme a documentação fornecida
+    const response = await fetch('https://api.orshot.com/v1/generate/images', { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${orshotKey}` // Autenticação Bearer obrigatória
+      },
+      body: JSON.stringify({
+        // IMPORTANTE: Substitua pelo ID do seu template criado no painel Orshot
+        templateId: "SEU_TEMPLATE_ID_AQUI", 
+        response: {
+          type: "base64", // Retorna a imagem diretamente em base64
+          format: "png"
+        },
+        modifications: {
+          // Nome da variável que você definiu no seu template Orshot
+          "prompt_text": prompt 
+        }
+      })
+    });
 
-    // Se não for OK, tentamos ler o erro antes de falhar no JSON
+    // Tratamento para evitar o erro de SyntaxError ao receber HTML de erro
     if (!response.ok) {
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Erro API Orshot: ${response.status}`);
-      } else {
-        const errorText = await response.text();
-        console.error("Resposta não-JSON da Orshot:", errorText);
-        throw new Error(`Erro de rede Orshot (${response.status}). O serviço pode estar instável.`);
-      }
+      const errorText = await response.text();
+      console.error("Erro detalhado Orshot:", errorText);
+      throw new Error(`Erro na Orshot (${response.status}). Verifique o ID do template.`);
     }
 
     const data = await response.json();
     
-    if (data.data && data.data[0]?.b64_json) {
-      return `data:image/png;base64,${data.data[0].b64_json}`;
-    } else if (data.data && data.data[0]?.url) {
-      return data.data[0].url;
+    // De acordo com a doc, se o type for base64, a imagem vem na propriedade 'image'
+    if (data.image) {
+      return `data:image/png;base64,${data.image}`;
+    } else if (data.url) {
+      return data.url;
     }
     
     throw new Error("A Orshot não retornou dados de imagem válidos.");
