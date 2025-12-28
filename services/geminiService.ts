@@ -20,46 +20,56 @@ export const generateCaption = async (description: string) => {
 };
 
 /**
- * GERAÇÃO DE IMAGEM (SUBNP FREE API)
- * Utiliza o endpoint gratuito da SubNP.
- * Documentação: https://subnp.com/pt/free-api
+ * GERAÇÃO DE IMAGEM (HÍBRIDA: SUBNP + GEMINI FALLBACK)
+ * Tenta usar a SubNP primeiro (sem headers para evitar CORS).
+ * Se falhar, usa o Gemini 2.5 Flash Image.
  */
 export const generateVisual = async (prompt: string, _originalImageBase64?: string) => {
+  // 1. TENTATIVA VIA SUBNP (Simple Request para evitar CORS preflight)
   try {
-    // Endpoint gratuito da SubNP que não exige Authorization Header
     const response = await fetch('https://subnp.com/api/free/generate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      // NOTA: Não enviamos 'Content-Type' para evitar o erro de CORS 'preflight'
+      // O corpo da requisição é enviado como string JSON pura.
       body: JSON.stringify({
         prompt: prompt,
-        model: "flux" // Modelos suportados: "flux", "turbo", etc.
+        model: "flux"
       })
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Erro SubNP Free (${response.status}):`, errorText);
-      throw new Error(`Erro na API SubNP: ${response.status}.`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.images && data.images.length > 0) return data.images[0];
+      if (data.url) return data.url;
     }
-
-    const data = await response.json();
-    
-    // A API gratuita da SubNP geralmente retorna as imagens em um array ou campo específico
-    if (data.images && data.images.length > 0) {
-      return data.images[0];
-    } else if (data.url) {
-      return data.url;
-    } else if (data.data && data.data[0]?.url) {
-      return data.data[0].url;
-    }
-    
-    throw new Error("A SubNP não retornou uma imagem válida. Verifique se o prompt é aceito.");
-  } catch (error: any) {
-    console.error("Erro na geração de imagem SubNP Free:", error);
-    throw error;
+  } catch (subnpError) {
+    console.warn("SubNP falhou ou bloqueou via CORS. Ativando Fallback Gemini...", subnpError);
   }
+
+  // 2. FALLBACK VIA GEMINI 2.5 FLASH IMAGE (Garantia de Funcionamento)
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        imageConfig: { aspectRatio: "1:1" }
+      }
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+  } catch (geminiError) {
+    console.error("Erro crítico em ambos os provedores de imagem:", geminiError);
+    throw new Error("Não foi possível gerar a imagem no momento. Tente um prompt diferente.");
+  }
+  
+  return null;
 };
 
 /**
