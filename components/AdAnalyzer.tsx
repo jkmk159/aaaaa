@@ -38,22 +38,22 @@ const AdAnalyzer: React.FC = () => {
     setSuggestedImage(null);
     
     try {
-      // Passo 1: Analisar anúncio e obter prompt de edição
-      const result = await analyzeAd(image, adText);
+      // Passo 1: Analisar anúncio com Gemini Vision
+      // Corrigido: Passando como objeto para satisfazer a assinatura da função
+      const result = await analyzeAd({ imageBuffer: image, text: adText });
       if (result) {
         const parsed = JSON.parse(result);
         setAnalysis(parsed);
         setLoading(false);
 
-        // Passo 2: Gerar nova imagem baseada na imagem enviada + prompt sugerido
+        // Passo 2: Gerar nova imagem baseada na análise usando SubNP
         setGeneratingVisual(true);
-        // Passamos a imagem original para que a IA use como base (Image-to-Image)
-        const visualUrl = await generateVisual(parsed.visualPrompt, image);
+        const visualUrl = await generateVisual(parsed.visualPrompt);
         setSuggestedImage(visualUrl);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Erro ao processar análise. Tente novamente.");
+      alert(`Erro no processo de IA: ${err.message || "Tente novamente."}`);
       setLoading(false);
     } finally {
       setGeneratingVisual(false);
@@ -69,7 +69,8 @@ const AdAnalyzer: React.FC = () => {
     if (!suggestedImage) return;
     const link = document.createElement('a');
     link.href = suggestedImage;
-    link.download = "CRIATIVO_OTIMIZADO_IA.png";
+    link.download = "CRIATIVO_OTIMIZADO_SUBNP.png";
+    link.target = "_blank";
     link.click();
   };
 
@@ -81,7 +82,7 @@ const AdAnalyzer: React.FC = () => {
             ANALISADOR DE <span className="text-blue-500">PERFORMANCE</span>
           </h2>
           <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mt-1">
-            Auditoria de criativos e redesign inteligente baseado no seu modelo
+            Auditoria via Gemini & Redesign via SubNP AI
           </p>
         </div>
         {(analysis || loading) && (
@@ -144,7 +145,7 @@ const AdAnalyzer: React.FC = () => {
               {loading || generatingVisual ? (
                 <div className="flex items-center justify-center gap-3">
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  {loading ? 'ANALISANDO ESTRUTURA...' : 'REIMAGINANDO DESIGN...'}
+                  {loading ? 'GEMINI ANALISANDO...' : 'SUBNP REDESIGN...'}
                 </div>
               ) : 'ANALISAR & REIMAGINAR'}
             </button>
@@ -192,7 +193,7 @@ const AdAnalyzer: React.FC = () => {
                 <div className="bg-blue-600/10 px-8 py-5 border-b border-gray-800 flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <span className="text-xl">✍️</span>
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Nova Copy Sugerida</h4>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500">Nova Copy (Gemini)</h4>
                   </div>
                   <button 
                     onClick={() => copyToClipboard(analysis.optimizedText)}
@@ -213,7 +214,7 @@ const AdAnalyzer: React.FC = () => {
                 <div className="bg-purple-600/10 px-8 py-5 border-b border-gray-800 flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <span className="text-xl">🎨</span>
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-400">Versão Reimaginada (IA)</h4>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-400">Redesign (SubNP AI)</h4>
                   </div>
                   {suggestedImage && (
                     <button 
@@ -230,7 +231,7 @@ const AdAnalyzer: React.FC = () => {
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm space-y-4">
                          <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
                          <p className="text-[10px] font-black uppercase tracking-widest text-purple-400 px-12 text-center">
-                           Processando redesign mantendo suas características...
+                           A SubNP está gerando uma nova versão profissional...
                          </p>
                       </div>
                     ) : suggestedImage ? (
@@ -242,7 +243,7 @@ const AdAnalyzer: React.FC = () => {
                     )}
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-4 text-[9px] font-bold text-gray-500 uppercase tracking-widest">
-                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div> MESMO LAYOUT</span>
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div> IA OTIMIZADA</span>
                     <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div> DESIGN ELEVADO</span>
                     <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div> BRANDING MANTIDO</span>
                   </div>
@@ -253,9 +254,9 @@ const AdAnalyzer: React.FC = () => {
           ) : (
             <div className="h-full min-h-[500px] border-2 border-dashed border-gray-800 rounded-[40px] flex flex-col items-center justify-center text-center p-12 bg-black/10">
                <div className="w-24 h-24 bg-gray-800/50 rounded-full flex items-center justify-center text-4xl mb-6 animate-pulse">🔍</div>
-               <h3 className="text-xl font-black uppercase italic tracking-tight text-gray-400">Auditorias de Alta Precisão</h3>
-               <p className="text-xs text-gray-600 font-bold uppercase mt-2 tracking-[0.2em] max-w-sm mx-auto">
-                 Envie seu criativo atual para que a IA possa analisar e gerar uma versão profissional mantendo sua identidade.
+               <h3 className="text-xl font-black uppercase italic tracking-tight text-gray-400">Auditorias Híbridas</h3>
+               <p className="text-xs text-gray-600 font-bold uppercase mt-2 tracking-[0.2em] max-w-sm mx-auto leading-relaxed">
+                 Análise estrutural via Gemini Vision e redesign visual de alta qualidade via SubNP Flux.
                </p>
             </div>
           )}
