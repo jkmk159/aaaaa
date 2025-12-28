@@ -25,8 +25,7 @@ export const generateCaption = async (description: string) => {
  */
 // No geminiService.ts
 
-import { supabase } from "@/lib/supabase";
-
+import { supabase } from "../lib/supabase";
 export const generateVisual = async (prompt: string) => {
   try {
     // 🔐 Pega a sessão atual do usuário
