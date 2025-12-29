@@ -17,6 +17,10 @@ const AdAnalyzer: React.FC = () => {
   const [analysis, setAnalysis] = useState<AdAnalysis | null>(null);
   const [suggestedImage, setSuggestedImage] = useState<string | null>(null);
 
+  const [imageProvider, setImageProvider] = useState<
+  "subnp" | "huggingface"
+>("subnp");
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -152,6 +156,23 @@ setSuggestedImage(visualUrl);
               onClick={handleAnalyze}
               disabled={loading || generatingVisual || !image}
               className="w-full bg-blue-600 py-6 rounded-2xl font-black uppercase italic tracking-widest text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 disabled:opacity-50 active:scale-95"
+              <div className="space-y-2">
+  <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">
+    🎨 IA DE IMAGEM
+  </h3>
+
+  <select
+    value={imageProvider}
+    onChange={(e) =>
+      setImageProvider(e.target.value as "subnp" | "huggingface")
+    }
+    className="w-full bg-black/40 border border-gray-700 rounded-xl p-3 text-xs font-bold uppercase"
+  >
+    <option value="subnp">SubNP (Flux)</option>
+    <option value="huggingface">HuggingFace (Grátis)</option>
+  </select>
+</div>
+
             >
               {loading || generatingVisual ? (
                 <div className="flex items-center justify-center gap-3">
