@@ -30,13 +30,12 @@ import { supabase } from "../lib/supabase";
 
 export async function generateVisual(prompt: string): Promise<string> {
   const response = await fetch(
-    'https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate',
+    "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        // ⚠️ obrigatório se sua Edge Function exige auth
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ prompt }),
     }
@@ -44,26 +43,36 @@ export async function generateVisual(prompt: string): Promise<string> {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Erro na Edge Function: ${response.status} - ${errText}`);
+    throw new Error(`Erro SubNP: ${response.status} - ${errText}`);
   }
 
-  const data: {
-    image?: string;
-    url?: string;
-  } = await response.json();
+  const data = await response.json();
 
-  // ✅ prioridade: base64
-  if (data.image) {
+  console.log("RESPOSTA SUBNP:", data);
+
+  // 🔥 CASO 1: { image: "base64" }
+  if (typeof data.image === "string") {
     return `data:image/png;base64,${data.image}`;
   }
 
-  // ✅ fallback: url
-  if (data.url) {
+  // 🔥 CASO 2: { url: "https://..." }
+  if (typeof data.url === "string") {
     return data.url;
   }
 
-  throw new Error('Resposta inválida da SubNP');
+  // 🔥 CASO 3: { data: [{ url }] }
+  if (Array.isArray(data.data) && data.data[0]?.url) {
+    return data.data[0].url;
+  }
+
+  // 🔥 CASO 4: { output: [{ b64_json }] }
+  if (Array.isArray(data.output) && data.output[0]?.b64_json) {
+    return `data:image/png;base64,${data.output[0].b64_json}`;
+  }
+
+  throw new Error("Resposta inválida da SubNP (formato desconhecido)");
 }
+
 
 
 /**
