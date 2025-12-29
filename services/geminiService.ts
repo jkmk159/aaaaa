@@ -1,34 +1,20 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-
-/**
- * GERAÇÃO DE TEXTO E ANÁLISE (GEMINI)
- */
-export const generateCaption = async (description: string) => {
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: `Crie 3 opções de legendas persuasivas e curtas para um anúncio de IPTV no Instagram/WhatsApp baseadas na seguinte descrição: ${description}. Use emojis e foco em vendas. Retorne apenas as opções.` }] }],
-      config: { temperature: 0.8 }
-    });
-    return response.text || "";
-  } catch (error) {
-    console.error("Erro Gemini Text:", error);
-    throw error;
-  }
-};
-
-/**
- * GERAÇÃO DE IMAGEM (VIA SUBNP - ROTA COMPATÍVEL)
- * Utiliza o endpoint oficial para evitar erros de cota e CORS encontrados no endpoint público.
- */
-// No geminiService.ts
-
-import { supabase } from "../lib/supabase";
 // services/geminiService.ts
+import { GoogleGenAI, Type } from "@google/genai";
+import { supabase } from "../lib/supabase";
 
-export async function generateVisual(prompt: string): Promise<string> {
+/**
+ * GERAÇÃO DE IMAGEM (VIA SUBNP OU HUGGING FACE)
+ * Agora aceita o parâmetro 'provider' para corrigir o erro TS2554.
+ */
+export async function generateVisual(
+  prompt: string, 
+  provider: "subnp" | "huggingface" = "subnp" // Adicionado o parâmetro com valor padrão
+): Promise<string> {
+  
+  // Se você implementar a lógica do Hugging Face no futuro, pode usar o 'provider' aqui.
+  // Por enquanto, manteremos a lógica da SubNP conforme seu código original.
+  
   const response = await fetch(
     "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
     {
@@ -37,7 +23,7 @@ export async function generateVisual(prompt: string): Promise<string> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, provider }), // Opcional: enviar o provider para a Edge Function
     }
   );
 
@@ -48,7 +34,7 @@ export async function generateVisual(prompt: string): Promise<string> {
 
   const data = await response.json();
 
-  console.log("RESPOSTA SUBNP:", data);
+  console.log("RESPOSTA IMAGEM:", data);
 
   // 🔥 CASO 1: { image: "base64" }
   if (typeof data.image === "string") {
@@ -70,9 +56,8 @@ export async function generateVisual(prompt: string): Promise<string> {
     return `data:image/png;base64,${data.output[0].b64_json}`;
   }
 
-  throw new Error("Resposta inválida da SubNP (formato desconhecido)");
+  throw new Error("Resposta inválida do provedor de imagem");
 }
-
 
 
 /**
