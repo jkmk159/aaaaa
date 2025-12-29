@@ -79,10 +79,12 @@ export async function generateVisual(prompt: string): Promise<string> {
  * ANÁLISE DE ANÚNCIOS (VISION COM GEMINI PRO)
  * Refatorado para receber objeto e evitar erros de parâmetros no TS.
  */
-export const analyzeAd = async (params: { imageBuffer: string, text: string }) => {
+export const analyzeAd = async (params: { imageBuffer: string; text: string }) => {
   const { imageBuffer, text } = params;
+
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     const imagePart = {
       inlineData: {
         data: imageBuffer.split(',')[1],
@@ -91,34 +93,43 @@ export const analyzeAd = async (params: { imageBuffer: string, text: string }) =
     };
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: { 
-        parts: [
-          imagePart, 
-          { text: `Analise este anúncio de IPTV (texto: "${text}") e retorne JSON com pontos fortes (strengths), melhorias (improvements), texto otimizado (optimizedText) e um prompt visual (visualPrompt) para recriar esta arte com mais qualidade. O prompt visual deve ser em inglês e muito detalhado.` }
-        ] 
-      },
+      // ✅ MODELO COM COTA GRATUITA
+      model: 'gemini-3-flash-preview',
+
+      contents: [
+        {
+          parts: [
+            imagePart,
+            {
+              text: `
+Analise este anúncio de IPTV.
+
+Texto do anúncio:
+"${text}"
+
+Retorne APENAS um JSON com:
+- strengths (array de strings)
+- improvements (array de strings)
+- optimizedText (string)
+- visualPrompt (string em inglês, detalhado, para gerar imagem profissional)
+              `,
+            },
+          ],
+        },
+      ],
+
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-            improvements: { type: Type.ARRAY, items: { type: Type.STRING } },
-            optimizedText: { type: Type.STRING },
-            visualPrompt: { type: Type.STRING }
-          },
-          required: ['strengths', 'improvements', 'optimizedText', 'visualPrompt']
-        }
-      }
+        temperature: 0.4,
+      },
     });
 
-    return response.text || "";
+    return response.text || '';
   } catch (error) {
-    console.error("Erro na análise de anúncio:", error);
+    console.error('Erro na análise de anúncio:', error);
     throw error;
   }
 };
+
 
 /**
  * GERAÇÃO EM MASSA DE COPYS
