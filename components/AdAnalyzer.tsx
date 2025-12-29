@@ -47,11 +47,11 @@ const AdAnalyzer: React.FC = () => {
         setLoading(false);
 
         // Passo 2: Gerar nova imagem baseada na análise usando SubNP
-        setGeneratingVisual(true);
-        const visualResult = await generateVisual(parsed.visualPrompt);
-
+        
+setGeneratingVisual(true);
 const visualUrl = await generateVisual(parsed.visualPrompt);
 setSuggestedImage(visualUrl);
+
 
 
       }
