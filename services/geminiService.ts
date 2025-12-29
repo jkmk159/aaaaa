@@ -26,7 +26,7 @@ export const generateCaption = async (description: string) => {
 // No geminiService.ts
 
 import { supabase } from "../lib/supabase";
-export const generateVisual = async (prompt: string) => {
+export const generateVisual = async (prompt: string): Promise<string> => {
   const { data: { session } } = await supabase.auth.getSession();
 
   const res = await fetch(
@@ -42,12 +42,30 @@ export const generateVisual = async (prompt: string) => {
   );
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
+    throw new Error(await res.text());
   }
 
-  return await res.json();
+  const data = await res.json();
+
+  // 🚫 DAQUI PRA BAIXO, SÓ STRING PASSA
+  if (typeof data === "string") return data;
+
+  if (data?.image && typeof data.image === "string") {
+    return `data:image/png;base64,${data.image}`;
+  }
+
+  if (data?.data?.image && typeof data.data.image === "string") {
+    return `data:image/png;base64,${data.data.image}`;
+  }
+
+  if (data?.url && typeof data.url === "string") {
+    return data.url;
+  }
+
+  console.error("Resposta inválida da SubNP:", data);
+  throw new Error("SubNP não retornou imagem válida");
 };
+
 
 
 /**
