@@ -42,8 +42,15 @@ const AdAnalyzer: React.FC = () => {
       // Corrigido: Passando como objeto para satisfazer a assinatura da função
       const result = await analyzeAd({ imageBuffer: image, text: adText });
       if (result) {
-        const parsed = JSON.parse(result);
-        setAnalysis(parsed);
+        // 🔥 LIMPA markdown ```json ``` antes de parsear
+const cleanJson = result
+  .replace(/```json/gi, '')
+  .replace(/```/g, '')
+  .trim();
+
+const parsed = JSON.parse(cleanJson);
+setAnalysis(parsed);
+
         setLoading(false);
 
         // Passo 2: Gerar nova imagem baseada na análise usando SubNP
