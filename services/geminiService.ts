@@ -26,46 +26,44 @@ export const generateCaption = async (description: string) => {
 // No geminiService.ts
 
 import { supabase } from "../lib/supabase";
-export const generateVisual = async (prompt: string): Promise<string> => {
-  const { data: { session } } = await supabase.auth.getSession();
+// services/geminiService.ts
 
-  const res = await fetch(
-    "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
+export async function generateVisual(prompt: string): Promise<string> {
+  const response = await fetch(
+    'https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate',
     {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+        // ⚠️ obrigatório se sua Edge Function exige auth
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ prompt }),
     }
   );
 
-  if (!res.ok) {
-    throw new Error(await res.text());
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Erro na Edge Function: ${response.status} - ${errText}`);
   }
 
-  const data = await res.json();
+  const data: {
+    image?: string;
+    url?: string;
+  } = await response.json();
 
-  // 🚫 DAQUI PRA BAIXO, SÓ STRING PASSA
-  if (typeof data === "string") return data;
-
-  if (data?.image && typeof data.image === "string") {
+  // ✅ prioridade: base64
+  if (data.image) {
     return `data:image/png;base64,${data.image}`;
   }
 
-  if (data?.data?.image && typeof data.data.image === "string") {
-    return `data:image/png;base64,${data.data.image}`;
-  }
-
-  if (data?.url && typeof data.url === "string") {
+  // ✅ fallback: url
+  if (data.url) {
     return data.url;
   }
 
-  console.error("Resposta inválida da SubNP:", data);
-  throw new Error("SubNP não retornou imagem válida");
-};
-
+  throw new Error('Resposta inválida da SubNP');
+}
 
 
 /**
