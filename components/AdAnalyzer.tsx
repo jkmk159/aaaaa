@@ -50,24 +50,9 @@ const AdAnalyzer: React.FC = () => {
         setGeneratingVisual(true);
         const visualResult = await generateVisual(parsed.visualPrompt);
 
-// 🔒 GARANTIA ABSOLUTA DE STRING
-let finalImageUrl: string | null = null;
+const visualUrl = await generateVisual(parsed.visualPrompt);
+setSuggestedImage(visualUrl);
 
-if (typeof visualResult === "string") {
-  finalImageUrl = visualResult;
-} else if (visualResult?.image) {
-  finalImageUrl = `data:image/png;base64,${visualResult.image}`;
-} else if (visualResult?.data?.image) {
-  finalImageUrl = `data:image/png;base64,${visualResult.data.image}`;
-} else if (visualResult?.url) {
-  finalImageUrl = visualResult.url;
-}
-
-if (!finalImageUrl) {
-  throw new Error("SubNP não retornou uma imagem válida");
-}
-
-setSuggestedImage(finalImageUrl);
 
       }
     } catch (err: any) {
