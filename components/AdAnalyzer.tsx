@@ -60,8 +60,12 @@ setAnalysis(parsed);
         // Passo 2: Gerar nova imagem baseada na análise usando SubNP
         
 setGeneratingVisual(true);
-const visualUrl = await generateVisual(parsed.visualPrompt);
+const visualUrl = await generateVisual(
+  parsed.visualPrompt,
+  imageProvider
+);
 setSuggestedImage(visualUrl);
+
 
 
 
@@ -153,27 +157,40 @@ setSuggestedImage(visualUrl);
             </div>
 
             <button 
-              onClick={handleAnalyze}
-              disabled={loading || generatingVisual || !image}
-              className="w-full bg-blue-600 py-6 rounded-2xl font-black uppercase italic tracking-widest text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 disabled:opacity-50 active:scale-95"
-              <div className="space-y-2">
-  <h3 className="text-xs font-black uppercase tracking-widest text-gray-500">
-    🎨 IA DE IMAGEM
-  </h3>
+  onClick={handleAnalyze}
+  disabled={loading || generatingVisual || !image}
+  className="w-full bg-blue-600 py-6 rounded-2xl font-black uppercase italic tracking-widest text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 disabled:opacity-50 active:scale-95"
+>
+  <div className="space-y-2">
+    <h3 className="text-xs font-black uppercase tracking-widest text-gray-200">
+      🎨 IA DE IMAGEM
+    </h3>
 
-  <select
-    value={imageProvider}
-    onChange={(e) =>
-      setImageProvider(e.target.value as "subnp" | "huggingface")
-    }
-    className="w-full bg-black/40 border border-gray-700 rounded-xl p-3 text-xs font-bold uppercase"
-  >
-    <option value="subnp">SubNP (Flux)</option>
-    <option value="huggingface">HuggingFace (Grátis)</option>
-  </select>
-</div>
+    <select
+      value={imageProvider}
+      onChange={(e) =>
+        setImageProvider(e.target.value as "subnp" | "huggingface")
+      }
+      className="w-full bg-black/40 border border-gray-700 rounded-xl p-3 text-xs font-bold uppercase"
+      onClick={(e) => e.stopPropagation()} // 🔥 evita disparar o botão
+    >
+      <option value="subnp">SubNP (Flux)</option>
+      <option value="huggingface">HuggingFace (Grátis)</option>
+    </select>
 
-            >
+    {loading || generatingVisual ? (
+      <div className="flex items-center justify-center gap-3 mt-3">
+        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-xs">
+          {loading ? 'GEMINI ANALISANDO...' : 'GERANDO IMAGEM...'}
+        </span>
+      </div>
+    ) : (
+      <span className="block mt-3">ANALISAR & REIMAGINAR</span>
+    )}
+  </div>
+</button>
+
               {loading || generatingVisual ? (
                 <div className="flex items-center justify-center gap-3">
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
