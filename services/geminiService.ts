@@ -34,12 +34,12 @@ export const generateCaption = async (description: string) => {
 export const generateVisual = async (prompt: string): Promise<string | null> => {
   try {
     const response = await fetch(
-      "https://pyjdlfbxgcutqzfqcpcd.supabase.co",
+      "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: "sb_publishable_4KPNqTFd8e9GuDmJ-7Tdvg_7pdYqZ5v",
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({ prompt }),
       }
@@ -52,22 +52,23 @@ export const generateVisual = async (prompt: string): Promise<string | null> => 
 
     const data = await response.json();
 
-    if (!data?.image) {
-      return null;
-    }
-
-    // HuggingFace retorna base64
-    if (data.provider === "huggingface") {
+    // HuggingFace (base64)
+    if (data.provider === "huggingface" && data.image) {
       return `data:image/png;base64,${data.image}`;
     }
 
-    // SubNP retorna URL
-    return data.image;
+    // SubNP (URL)
+    if (data.provider === "subnp" && data.image) {
+      return data.image;
+    }
+
+    return null;
   } catch (error) {
     console.error("Erro generateVisual:", error);
     return null;
   }
 };
+
 
 /* =========================================================
    🔹 ANÁLISE DE ANÚNCIOS (VISION - GEMINI PRO)
