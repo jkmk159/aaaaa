@@ -28,6 +28,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
           VITE_ORSHOT_KEY: ${{ secrets.VITE_ORSHOT_KEY }}
+          VITE_OPENAI_API_KEY: ${{ secrets.VITE_OPENAI_API_KEY }}
 
       - name: Sync Files to Hostinger (FTP)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
