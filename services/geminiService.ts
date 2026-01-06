@@ -33,13 +33,18 @@ export const generateCaption = async (description: string) => {
 ========================================================= */
 export const generateVisual = async (prompt: string): Promise<string | null> => {
   try {
+    // ⚠️ COLE SUA ANON KEY AQUI (a mesma do Supabase → Settings → API)
+    const SUPABASE_ANON_KEY =
+      "sb_publishable_4KPNqTFd8e9GuDmJ-7Tdvg_7pdYqZ5v";
+
     const response = await fetch(
       "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ prompt }),
       }
@@ -52,12 +57,12 @@ export const generateVisual = async (prompt: string): Promise<string | null> => 
 
     const data = await response.json();
 
-    // HuggingFace (base64)
+    // HuggingFace → base64
     if (data.provider === "huggingface" && data.image) {
       return `data:image/png;base64,${data.image}`;
     }
 
-    // SubNP (URL)
+    // SubNP → URL
     if (data.provider === "subnp" && data.image) {
       return data.image;
     }
@@ -68,7 +73,6 @@ export const generateVisual = async (prompt: string): Promise<string | null> => 
     return null;
   }
 };
-
 
 /* =========================================================
    🔹 ANÁLISE DE ANÚNCIOS (VISION - GEMINI PRO)
