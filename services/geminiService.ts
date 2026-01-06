@@ -33,12 +33,17 @@ export const generateCaption = async (description: string) => {
 ========================================================= */
 export const generateVisual = async (prompt: string): Promise<string | null> => {
   try {
+    const SUPABASE_ANON_KEY =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5amRsZmJ4Z2N1dHF6ZnFjcGNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMjg5ODUsImV4cCI6MjA4MTYwNDk4NX0.mWZ2LW9CEoFloO5OC8IuG7dqRgBzRcFUBrvx8yHQ5p8"; // Settings → API → anon public
+
     const response = await fetch(
       "https://pyjdlfbxgcutqzfqcpcd.supabase.co/functions/v1/subnp-generate",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "apikey": SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({ prompt }),
       }
@@ -50,21 +55,22 @@ export const generateVisual = async (prompt: string): Promise<string | null> => 
 
     const data = await response.json();
 
-    if (data.provider === "huggingface") {
+    // HuggingFace (base64)
+    if (data.provider === "huggingface" && data.image) {
       return `data:image/png;base64,${data.image}`;
     }
 
-    if (data.provider === "subnp") {
+    // SubNP (url)
+    if (data.provider === "subnp" && data.image) {
       return data.image;
     }
 
     return null;
-  } catch (err) {
-    console.error("Erro generateVisual:", err);
+  } catch (error) {
+    console.error("Erro generateVisual:", error);
     return null;
   }
 };
-
 
 /* =========================================================
    🔹 ANÁLISE DE ANÚNCIOS (VISION - GEMINI PRO)
