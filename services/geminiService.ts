@@ -34,12 +34,12 @@ export const generateCaption = async (description: string) => {
 export const generateVisual = async (prompt: string): Promise<string | null> => {
   try {
     const response = await fetch(
-      "https://SEU-PROJETO.supabase.co/functions/v1/subnp-generate",
+      "https://pyjdlfbxgcutqzfqcpcd.supabase.co",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          apikey: "SUA_ANON_KEY_DO_SUPABASE",
+          apikey: "sb_publishable_4KPNqTFd8e9GuDmJ-7Tdvg_7pdYqZ5v",
         },
         body: JSON.stringify({ prompt }),
       }
