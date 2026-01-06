@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateVisual, generateLogoOpenAI } from '../services/geminiService';
+import { generateVisual } from '../services/geminiService';
 
 /**
  * Mapeamento de estilos para PROMPT TÉCNICO (funciona bem no SubNP / Flux)
@@ -18,7 +18,6 @@ const LogoGenerator: React.FC = () => {
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [editPrompt, setEditPrompt] = useState('');
-  const [useOpenAI, setUseOpenAI] = useState(true);
 
   const [brandName, setBrandName] = useState('');
   const [slogan, setSlogan] = useState('');
@@ -85,12 +84,8 @@ low quality, messy design, illustration, photo,
 background clutter, noise, artifacts
 `;
 
-      let result;
-      if (useOpenAI) {
-        result = await generateLogoOpenAI(prompt);
-      } else {
-        result = await generateVisual(prompt);
-      }
+      const result = await generateVisual(prompt);
+
 
       if (result) {
         setGeneratedImageUrl(result);
@@ -137,12 +132,8 @@ Negative:
 blur, artifacts, extra text, wrong spelling
 `;
 
-      let result;
-      if (useOpenAI) {
-        result = await generateLogoOpenAI(prompt);
-      } else {
-        result = await generateVisual(prompt);
-      }
+      const result = await generateVisual(prompt);
+
 
       if (result) {
         setGeneratedImageUrl(result);
@@ -172,36 +163,18 @@ blur, artifacts, extra text, wrong spelling
   };
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <header className="mb-12 flex justify-between items-end">
-        <div>
-          <h2 className="text-3xl font-black italic uppercase tracking-tighter">
-            GERADOR DE <span className="text-blue-500">LOGOS PRO</span>
-          </h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mt-1">
-            QUALIDADE PROFISSIONAL COM {useOpenAI ? 'OPENAI DALL·E' : 'SUBNP FLUX'}
-          </p>
-        </div>
+  <div className="p-8 max-w-6xl mx-auto">
+    <header className="mb-12 flex justify-between items-end">
+      <div>
+        <h2 className="text-3xl font-black italic uppercase tracking-tighter">
+          GERADOR DE <span className="text-blue-500">LOGOS PRO</span>
+        </h2>
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mt-1">
+          QUALIDADE PROFISSIONAL COM SUBNP FLUX
+        </p>
+      </div>
+    </header>
 
-        <div className="flex bg-black/40 p-1 rounded-2xl border border-gray-800">
-          <button
-            onClick={() => setUseOpenAI(false)}
-            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-              !useOpenAI ? 'bg-gray-800 text-white shadow-lg' : 'text-gray-600'
-            }`}
-          >
-            Flux Standard
-          </button>
-          <button
-            onClick={() => setUseOpenAI(true)}
-            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-              useOpenAI ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-600'
-            }`}
-          >
-            OpenAI Ultra
-          </button>
-        </div>
-      </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         <section className="bg-[#141824] p-8 rounded-[40px] border border-gray-800 shadow-2xl space-y-6">
