@@ -1,35 +1,46 @@
-
 import { createClient } from '@supabase/supabase-js';
 
-// Helper robusto para capturar variáveis de ambiente
-const getEnvVar = (key: string): string => {
-  const value = process.env[key] || (import.meta as any).env?.[key] || "";
-  return value.trim();
-};
+/**
+ * Vite usa SOMENTE import.meta.env
+ * Nunca process.env no frontend
+ */
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
-
-// Log de diagnóstico
-if (!supabaseAnonKey || supabaseAnonKey === "no-key-provided") {
-  console.warn("AVISO: Chave do Supabase não detectada. Configure VITE_SUPABASE_ANON_KEY.");
+/**
+ * Validação básica em tempo de build/runtime
+ */
+if (!supabaseUrl) {
+  throw new Error(
+    'VITE_SUPABASE_URL não configurada. Verifique seu arquivo .env'
+  );
 }
 
+if (!supabaseAnonKey) {
+  console.warn(
+    '⚠️ VITE_SUPABASE_ANON_KEY não configurada. Autenticação não funcionará.'
+  );
+}
+
+/**
+ * Client Supabase (frontend)
+ * Edge Functions devem usar SERVICE_ROLE_KEY no backend
+ */
 export const supabase = createClient(
-  supabaseUrl, 
-  supabaseAnonKey || "no-key-provided",
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-    }
+      detectSessionInUrl: true,
+    },
   }
 );
 
 /**
- * Verifica se as credenciais do Supabase estão configuradas no ambiente.
+ * Utilitário opcional para debug
  */
-export function checkSupabaseConnection(): boolean {
-  const key = getEnvVar('VITE_SUPABASE_ANON_KEY');
-  return !!key && key !== "no-key-provided" && key !== "undefined" && key !== "";
-}
+export const isSupabaseConfigured = (): boolean => {
+  return Boolean(supabaseUrl && supabaseAnonKey);
+};
