@@ -43,14 +43,15 @@ export interface Server {
   id: string;
   name: string;
   url: string;
+  apiKey?: string; // Chave para autenticação no painel IPTV
 }
 
 export interface Plan {
   id: string;
   name: string;
   price: number;
-  months?: number; // Legacy support
-  days?: number;   // Legacy support
+  months?: number; 
+  days?: number;   
   durationValue: number;
   durationUnit: 'months' | 'days';
 }
@@ -65,6 +66,7 @@ export interface Client {
   planId: string;
   expirationDate: string;
   status: 'active' | 'expired' | 'near_expiry';
+  url_m3u?: string; // URL M3U retornada pelo painel
 }
 
 export type ViewType = 
