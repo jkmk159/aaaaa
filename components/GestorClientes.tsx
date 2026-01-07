@@ -199,3 +199,123 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         <table className="w-full text-left">
           <thead className="bg-black/20 border-b border-gray-800">
             <tr>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Cliente</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Login Info</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Plano & Servidor</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Expiração</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-center">Status</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-800/50">
+            {filteredClients.map(c => (
+              <tr key={c.id} className="hover:bg-white/[0.02] transition-colors">
+                <td className="px-8 py-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-500 font-bold">
+                      {c.name[0].toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-white">{c.name}</p>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase">{c.phone}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-8 py-6">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] text-gray-600 font-black">User:</span>
+                       <span className="text-xs font-mono text-gray-300">{c.username}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] text-gray-600 font-black">Pass:</span>
+                       <span className="text-xs font-mono text-gray-300">{c.password}</span>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-8 py-6">
+                  <p className="text-xs font-bold text-gray-300">{plans.find(p => p.id === c.planId)?.name || 'N/A'}</p>
+                  <p className="text-[10px] text-blue-500 font-black uppercase mt-1">{servers.find(s => s.id === c.serverId)?.name || 'SEM SERVIDOR'}</p>
+                </td>
+                <td className="px-8 py-6">
+                  <p className="text-sm font-mono text-gray-300">{new Date(c.expirationDate).toLocaleDateString('pt-BR')}</p>
+                </td>
+                <td className="px-8 py-6 text-center">
+                  <span className={`text-[8px] font-black uppercase px-3 py-1.5 rounded-lg inline-block border ${
+                    getClientStatus(c.expirationDate) === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
+                    getClientStatus(c.expirationDate) === 'expired' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                    'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                  }`}>
+                    {getClientStatus(c.expirationDate)}
+                  </span>
+                </td>
+                <td className="px-8 py-6 text-right">
+                  <div className="flex justify-end gap-3">
+                    <button onClick={() => handleOpenRenew(c)} className="p-2.5 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all">🔄</button>
+                    <button onClick={() => handleOpenEdit(c)} className="p-2.5 rounded-xl bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all">✏️</button>
+                    <button onClick={() => onDelete(c.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">🗑️</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
+          <div className="relative w-full max-w-2xl bg-[#141824] rounded-[40px] border border-gray-800 p-10">
+            <h2 className="text-2xl font-black text-white mb-10">{editingClient ? 'Editar Cliente' : 'Adicionar no Painel IPTV'}</h2>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-6">
+                <input placeholder="Nome" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none" />
+                <input placeholder="Telefone" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <input placeholder="Usuário IPTV" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none" />
+                <input placeholder="Senha IPTV" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <select value={formData.planId} onChange={e => setFormData({ ...formData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none">
+                  <option value="">Plano</option>
+                  {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <select value={formData.serverId} onChange={e => setFormData({ ...formData, serverId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none">
+                  <option value="">Servidor</option>
+                  {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-6 pt-6">
+                <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold">Cancelar</button>
+                <button onClick={handleSaveClient} className="bg-blue-600 px-10 py-4 rounded-2xl font-black text-white uppercase text-xs">Confirmar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isRenewalModalOpen && renewingClient && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
+          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-blue-600/30 p-10">
+            <h2 className="text-xl font-black text-white uppercase text-center mb-6">Renovar Assinatura</h2>
+            <div className="space-y-6">
+              <select 
+                value={renewalData.planId} 
+                onChange={e => setRenewalData({ ...renewalData, planId: e.target.value, manualDate: '' })} 
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white outline-none"
+              >
+                <option value="">Selecione o Plano</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs">Confirmar Renovação</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GestorClientes;
