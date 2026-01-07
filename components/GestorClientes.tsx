@@ -232,4 +232,45 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
               <input placeholder="WhatsApp" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
-              <input placeholder="Usuário" value={formData.username} onChange={e => setFormData({ ...formData, username
+              <input placeholder="Usuário" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+              <input placeholder="Senha" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <select value={formData.planId} onChange={e => setFormData({ ...formData, planId: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none">
+                <option value="">Selecione o Plano</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <select value={formData.serverId} onChange={e => setFormData({ ...formData, serverId: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none">
+                <option value="">Selecione o Servidor</option>
+                {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end gap-4">
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Sair</button>
+              <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs shadow-lg shadow-blue-600/20">Ativar no Painel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RENOVAR */}
+      {isRenewalModalOpen && renewingClient && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
+          <div className="relative w-full max-w-sm bg-[#141824] rounded-[32px] border border-blue-600/30 p-8 shadow-2xl">
+            <h2 className="text-xl font-black text-white uppercase italic text-center mb-6">Renovar Acesso</h2>
+            <div className="space-y-4">
+              <select value={renewalData.planId} onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-blue-500">
+                <option value="">Escolha o Plano</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs shadow-lg shadow-blue-600/20">Confirmar Renovação</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default GestorClientes;
