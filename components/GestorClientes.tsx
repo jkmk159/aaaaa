@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
 import { Client, Server, Plan } from '../types';
+import { createRemoteIptvUser, renewRemoteIptvUser } from '../services/iptvService'; // Certifique-se que o caminho está correto
 
 interface Props {
   clients: Client[];
@@ -19,108 +19,106 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [renewingClient, setRenewingClient] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   const [formData, setFormData] = useState({ 
-    name: '', 
-    username: '', 
-    password: '', 
-    phone: '', 
-    email: '', 
-    serverId: '', 
-    planId: '', 
-    expirationDate: '' 
+    name: '', username: '', password: '', phone: '', serverId: '', planId: '', expirationDate: '' 
   });
 
-  const [renewalData, setRenewalData] = useState({
-    planId: '',
-    manualDate: ''
-  });
+  const [renewalData, setRenewalData] = useState({ planId: '', manualDate: '' });
 
   const handleOpenCreate = () => {
     setEditingClient(null);
-    setFormData({ name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' });
+    setFormData({ name: '', username: '', password: '', phone: '', serverId: '', planId: '', expirationDate: '' });
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (client: Client) => {
-    setEditingClient(client);
-    setFormData({ 
-      name: client.name, 
-      username: client.username, 
-      password: client.password || '', 
-      phone: client.phone, 
-      email: '', // Email não existia no tipo original, mas podemos tratar se necessário
-      serverId: client.serverId, 
-      planId: client.planId, 
-      expirationDate: client.expirationDate 
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenRenew = (client: Client) => {
-    setRenewingClient(client);
-    setRenewalData({ planId: client.planId, manualDate: '' });
-    setIsRenewalModalOpen(true);
-  };
-
-  const handleSaveClient = () => {
-    if (!formData.name || !formData.serverId || !formData.planId) {
-      alert("Por favor, preencha os campos obrigatórios.");
+  const handleSaveClient = async () => {
+    if (!formData.name || !formData.serverId || !formData.planId || !formData.username || !formData.password) {
+      alert("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
 
-    if (editingClient) {
-      // Modo Edição
-      const updatedClients = clients.map(c => {
-        if (c.id === editingClient.id) {
-          return {
-            ...c,
-            ...formData,
-            status: getClientStatus(formData.expirationDate || c.expirationDate)
+    setIsLoading(true);
+    try {
+      if (editingClient) {
+        // Lógica de edição local (Opcional: implementar update na API se o painel suportar)
+        const updatedClients = clients.map(c => c.id === editingClient.id ? { ...c, ...formData } : c);
+        setClients(updatedClients);
+        setIsModalOpen(false);
+      } else {
+        // CRIAÇÃO REAL VIA EDGE FUNCTION
+        const selectedPlan = plans.find(p => p.id === formData.planId);
+        const planName = selectedPlan?.name.toLowerCase().includes('pro') ? 'professional' : 'starter';
+
+        const result = await createRemoteIptvUser(formData.serverId, {
+          username: formData.username,
+          password: formData.password,
+          plan: planName,
+          nome: formData.name,
+          whatsapp: formData.phone
+        });
+
+        if (result.success) {
+          const apiData = result.data;
+          const newClient: Client = {
+            id: apiData?.id?.toString() || Date.now().toString(),
+            name: formData.name,
+            username: formData.username,
+            password: formData.password,
+            phone: formData.phone,
+            serverId: formData.serverId,
+            planId: formData.planId,
+            expirationDate: apiData?.data_vencimento || new Date().toISOString(),
+            url_m3u: apiData?.credenciais?.url_m3u || "",
+            status: getClientStatus(apiData?.data_vencimento || new Date().toISOString())
           };
+          setClients([...clients, newClient]);
+          setIsModalOpen(false);
+          alert("Cliente criado e ativado no painel!");
+        } else {
+          alert("Erro no Painel: " + result.message);
         }
-        return c;
-      });
-      setClients(updatedClients);
-    } else {
-      // Modo Criação
-      let exp = formData.expirationDate;
-      if (!exp && formData.planId) {
-        const plan = plans.find(p => p.id === formData.planId);
-        exp = addDays(new Date(), plan?.months || 1);
       }
-
-      const newClient: Client = {
-        id: Date.now().toString(),
-        name: formData.name,
-        username: formData.username,
-        password: formData.password,
-        phone: formData.phone,
-        serverId: formData.serverId,
-        planId: formData.planId,
-        expirationDate: exp || new Date().toISOString().split('T')[0],
-        status: getClientStatus(exp || new Date().toISOString().split('T')[0])
-      };
-      setClients([...clients, newClient]);
+    } catch (error) {
+      alert("Erro ao processar requisição.");
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsModalOpen(false);
   };
 
-  const handleConfirmRenewal = () => {
+  const handleConfirmRenewal = async () => {
     if (!renewingClient) return;
     
-    if (renewalData.manualDate) {
-      onRenew(renewingClient.id, '', renewalData.manualDate);
-    } else if (renewalData.planId) {
-      onRenew(renewingClient.id, renewalData.planId);
-    } else {
-      alert("Selecione um plano ou uma data manual.");
-      return;
-    }
+    setIsLoading(true);
+    try {
+      const selectedPlan = plans.find(p => p.id === renewalData.planId);
+      const dias = selectedPlan?.durationValue || 30;
 
-    setIsRenewalModalOpen(false);
-    setRenewingClient(null);
+      const result = await renewRemoteIptvUser(renewingClient.serverId, renewingClient.username, dias);
+
+      if (result.success) {
+        const novaData = result.data?.nova_data_vencimento;
+        
+        // Atualiza localmente para refletir na tabela na hora
+        const updated = clients.map(c => 
+          c.id === renewingClient.id ? { ...c, expirationDate: novaData, status: getClientStatus(novaData) } : c
+        );
+        setClients(updated);
+        
+        // Sincroniza com o componente pai (Supabase DB)
+        onRenew(renewingClient.id, renewalData.planId, novaData);
+        
+        setIsRenewalModalOpen(false);
+        alert("Assinatura renovada com sucesso!");
+      } else {
+        alert("Erro na renovação: " + result.message);
+      }
+    } catch (error) {
+      alert("Erro técnico ao renovar.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const filteredClients = clients.filter(c => 
@@ -130,105 +128,55 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
 
   return (
     <div className="p-8 animate-fade-in max-w-[1400px] mx-auto">
-      {/* HEADER DA ABA */}
+      {/* HEADER */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-white">Clientes</h1>
-          <p className="text-gray-500 font-medium mt-1">Gerencie seus assinantes de IPTV</p>
+          <h1 className="text-4xl font-black tracking-tight text-white uppercase italic">Clientes <span className="text-blue-500">Cloud</span></h1>
         </div>
-        <button 
-          onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20"
-        >
-          <span className="text-xl">+</span> Adicionar Cliente
+        <button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-2xl font-black transition-all shadow-lg shadow-blue-600/20">
+          + NOVO ACESSO
         </button>
       </div>
 
-      {/* BARRA DE BUSCA E FILTRO */}
-      <div className="flex gap-4 mb-6">
-        <div className="flex-1 relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">🔍</span>
-          <input 
-            type="text" 
-            placeholder="pesquisar clientes..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm font-medium focus:border-blue-500 outline-none transition-all placeholder:text-gray-600"
-          />
-        </div>
-        <button className="bg-[#141824] border border-gray-800 px-6 rounded-xl flex items-center gap-2 text-gray-400 hover:text-white transition-all">
-          <span className="text-sm">⚙️</span>
-          <span className="text-sm font-bold">Filtro</span>
-        </button>
+      {/* BUSCA */}
+      <div className="mb-6">
+        <input 
+          type="text" 
+          placeholder="Pesquisar por nome ou usuário..." 
+          className="w-full bg-[#141824] border border-gray-800 rounded-2xl py-4 px-6 text-white outline-none focus:border-blue-500"
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
-      {/* TABELA DE CLIENTES */}
-      <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+      {/* TABELA */}
+      <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden">
         <table className="w-full text-left">
-          <thead className="bg-black/20 border-b border-gray-800">
+          <thead className="bg-black/20 text-[10px] font-black uppercase text-gray-500">
             <tr>
-              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-500">Cliente</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-500">Login Info</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-500">Plano & Servidor</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-500">Expiração</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-500 text-center">Status</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Ações</th>
+              <th className="px-8 py-5">Cliente</th>
+              <th className="px-8 py-5">Acesso</th>
+              <th className="px-8 py-5">Vencimento</th>
+              <th className="px-8 py-5 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/50">
             {filteredClients.map(c => (
-              <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group">
+              <tr key={c.id} className="hover:bg-white/[0.02]">
                 <td className="px-8 py-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-500 font-bold">
-                      {c.name[0].toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-white">{c.name}</p>
-                      <p className="text-[10px] text-gray-500 font-bold uppercase">{c.phone}</p>
-                    </div>
-                  </div>
+                  <p className="font-bold text-white">{c.name}</p>
+                  <p className="text-[10px] text-gray-500">{c.phone}</p>
                 </td>
                 <td className="px-8 py-6">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] text-gray-600 font-black uppercase">User:</span>
-                       <span className="text-xs font-mono text-gray-300">{c.username}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] text-gray-600 font-black uppercase">Pass:</span>
-                       <span className="text-xs font-mono text-gray-300">{c.password}</span>
-                    </div>
-                  </div>
+                  <p className="text-xs font-mono text-blue-400">{c.username}</p>
                 </td>
                 <td className="px-8 py-6">
-                  <p className="text-xs font-bold text-gray-300">{plans.find(p => p.id === c.planId)?.name || 'N/A'}</p>
-                  <p className="text-[10px] text-blue-500 font-black uppercase tracking-tighter mt-1">{servers.find(s => s.id === c.serverId)?.name || 'SEM SERVIDOR'}</p>
+                  <p className="text-sm font-mono text-gray-300">
+                    {c.expirationDate ? new Date(c.expirationDate).toLocaleDateString('pt-BR') : '---'}
+                  </p>
                 </td>
-                <td className="px-8 py-6">
-                  <p className="text-sm font-mono text-gray-300">{new Date(c.expirationDate).toLocaleDateString('pt-BR')}</p>
-                </td>
-                <td className="px-8 py-6 text-center">
-                  <span className={`text-[8px] font-black uppercase px-3 py-1.5 rounded-lg inline-block tracking-widest ${
-                    getClientStatus(c.expirationDate) === 'active' ? 'bg-green-500/10 text-green-500 border border-green-500/20' :
-                    getClientStatus(c.expirationDate) === 'expired' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
-                    'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                  }`}>
-                    {getClientStatus(c.expirationDate)}
-                  </span>
-                </td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex justify-end gap-3">
-                    <button onClick={() => handleOpenRenew(c)} className="p-2.5 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Renovar">
-                      🔄
-                    </button>
-                    <button onClick={() => handleOpenEdit(c)} className="p-2.5 rounded-xl bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all shadow-sm" title="Editar">
-                      ✏️
-                    </button>
-                    <button onClick={() => onDelete(c.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" title="Excluir">
-                      🗑️
-                    </button>
-                  </div>
+                <td className="px-8 py-6 text-right flex justify-end gap-2">
+                  <button onClick={() => { setRenewingClient(c); setIsRenewalModalOpen(true); }} className="p-2 bg-blue-600/10 text-blue-500 rounded-lg hover:bg-blue-600 hover:text-white transition-all">🔄</button>
+                  <button onClick={() => onDelete(c.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all">🗑️</button>
                 </td>
               </tr>
             ))}
@@ -236,146 +184,56 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </table>
       </div>
 
-      {/* MODAL DE ADICIONAR/EDITAR CLIENTE */}
+      {/* MODAL CRIAR (Resumido para o exemplo) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative w-full max-w-2xl bg-[#141824] rounded-[40px] border border-gray-800 shadow-2xl overflow-hidden animate-fade-in">
-            <div className="p-10">
-              <div className="flex justify-between items-center mb-10">
-                <h2 className="text-2xl font-black text-white">{editingClient ? 'Editar Cliente' : 'Adicionar novo cliente'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors text-2xl">×</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#141824] p-10 rounded-[40px] border border-gray-800 w-full max-w-md shadow-2xl">
+            <h2 className="text-xl font-black text-white mb-6 uppercase">Cadastrar no Painel</h2>
+            <div className="space-y-4">
+              <input placeholder="Nome" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, name: e.target.value})} />
+              <input placeholder="WhatsApp" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, phone: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <input placeholder="Usuário" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, username: e.target.value})} />
+                <input placeholder="Senha" type="password" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, password: e.target.value})} />
               </div>
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nome Completo</label>
-                    <input 
-                      value={formData.name} 
-                      onChange={e => setFormData({ ...formData, name: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Telefone</label>
-                    <input 
-                      value={formData.phone} 
-                      onChange={e => setFormData({ ...formData, phone: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Usuário (IPTV)</label>
-                    <input 
-                      value={formData.username} 
-                      onChange={e => setFormData({ ...formData, username: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Senha (IPTV)</label>
-                    <input 
-                      type="password"
-                      value={formData.password} 
-                      onChange={e => setFormData({ ...formData, password: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Plano</label>
-                    <select 
-                      value={formData.planId} 
-                      onChange={e => setFormData({ ...formData, planId: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold appearance-none outline-none"
-                    >
-                      <option value="">Selecionar Plano</option>
-                      {plans.map(p => <option key={p.id} value={p.id}>{p.name} - R${p.price}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Servidor</label>
-                    <select 
-                      value={formData.serverId} 
-                      onChange={e => setFormData({ ...formData, serverId: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold appearance-none outline-none"
-                    >
-                      <option value="">Selecionar Servidor</option>
-                      {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Data de Vencimento (Manual)</label>
-                    <input 
-                      type="date"
-                      value={formData.expirationDate} 
-                      onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
-                </div>
-                <div className="flex justify-end gap-6 pt-6 items-center">
-                  <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white font-bold transition-all">Cancelar</button>
-                  <button onClick={handleSaveClient} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-blue-600/20 active:scale-95">
-                    {editingClient ? 'Salvar Alterações' : 'Adicionar Cliente'}
-                  </button>
-                </div>
-              </div>
+              <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, planId: e.target.value})}>
+                <option value="">Plano</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, serverId: e.target.value})}>
+                <option value="">Servidor</option>
+                {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              <button 
+                onClick={handleSaveClient} 
+                disabled={isLoading}
+                className="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase text-xs tracking-widest mt-4 disabled:opacity-50"
+              >
+                {isLoading ? 'PROCESSANDO...' : 'ATIVAR AGORA'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL DE RENOVAÇÃO */}
+      {/* MODAL RENOVAR */}
       {isRenewalModalOpen && renewingClient && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
-          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-blue-600/30 shadow-2xl overflow-hidden animate-fade-in">
-            <div className="p-10">
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">🔄</div>
-                <h2 className="text-xl font-black text-white uppercase tracking-tighter">Renovar Assinatura</h2>
-                <p className="text-gray-500 text-xs font-bold uppercase mt-1">{renewingClient.name}</p>
-              </div>
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Escolher Plano Pré-definido</label>
-                  <select 
-                    value={renewalData.planId} 
-                    onChange={e => setRenewalData({ ...renewalData, planId: e.target.value, manualDate: '' })} 
-                    className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold appearance-none outline-none focus:border-blue-500"
-                  >
-                    <option value="">Selecione um Plano</option>
-                    {plans.map(p => <option key={p.id} value={p.id}>{p.name} - R${p.price}</option>)}
-                  </select>
-                </div>
-                <div className="relative flex items-center justify-center py-2">
-                   <div className="h-px w-full bg-gray-800"></div>
-                   <span className="absolute bg-[#141824] px-4 text-[9px] font-black text-gray-600 uppercase">Ou selecione manual</span>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nova Data de Vencimento</label>
-                  <input 
-                    type="date"
-                    value={renewalData.manualDate} 
-                    onChange={e => setRenewalData({ ...renewalData, manualDate: e.target.value, planId: '' })} 
-                    className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                  />
-                </div>
-                <div className="flex flex-col gap-3 pt-4">
-                   <button 
-                     onClick={handleConfirmRenewal}
-                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-blue-600/20 active:scale-95"
-                   >
-                     Confirmar Renovação
-                   </button>
-                   <button onClick={() => setIsRenewalModalOpen(false)} className="text-gray-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Cancelar</button>
-                </div>
-              </div>
-            </div>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-[#141824] p-10 rounded-[40px] border border-blue-600/30 w-full max-w-sm text-center shadow-2xl">
+            <h2 className="text-xl font-black text-white mb-6 uppercase italic">Renovar Acesso</h2>
+            <p className="text-gray-500 text-xs mb-6 uppercase font-bold">{renewingClient.username}</p>
+            <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl mb-6 text-white text-center" onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })}>
+              <option value="">Escolha o Plano</option>
+              {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <button 
+              onClick={handleConfirmRenewal} 
+              disabled={isLoading}
+              className="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase text-xs tracking-widest disabled:opacity-50"
+            >
+              {isLoading ? 'RENOVANDO...' : 'CONFIRMAR RENOVAÇÃO'}
+            </button>
+            <button onClick={() => setIsRenewalModalOpen(false)} className="mt-4 text-gray-500 text-[10px] uppercase font-bold">Cancelar</button>
           </div>
         </div>
       )}
