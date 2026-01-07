@@ -75,13 +75,15 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // FIX: Cast supabase.auth to any to bypass typing inconsistencies in specific Supabase SDK environments for getSession.
+    (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
       setSession(session);
       if (session) fetchData(session.user.id);
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // FIX: Cast supabase.auth to any to bypass typing inconsistencies in specific Supabase SDK environments for onAuthStateChange.
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
       setSession(session);
       if (session) fetchData(session.user.id);
     });
@@ -114,7 +116,6 @@ const App: React.FC = () => {
             newlyAdded.password = creds.senha || newlyAdded.password;
             newlyAdded.url_m3u = creds.url_m3u;
           }
-          alert("✅ Usuário criado no painel IPTV!");
         }
       } catch (err) {
         console.error(err);
