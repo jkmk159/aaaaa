@@ -35,15 +35,18 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // FUNÇÃO DE SALVAMENTO DIRETO PARA EVITAR CONFLITOS
   const handleSaveServer = async (newServer: any) => {
-    const { id, ...dataToSave } = newServer;
-    // Garante que o user_id da sessão seja enviado
-    const payload = { ...dataToSave, user_id: session?.user?.id };
+    // Remove o ID temporário e mapeia a chave da API para o nome da coluna no banco
+    const payload = { 
+      name: newServer.name,
+      url: newServer.url,
+      api_key: newServer.apiKey || newServer.api_key, 
+      user_id: session?.user?.id 
+    };
     
     const { error } = await supabase.from('servers').insert([payload]);
     if (error) {
-      alert("Erro no Banco: " + error.message);
+      alert("Erro no Banco (Servers): " + error.message);
     } else {
       fetchData();
     }
@@ -65,7 +68,7 @@ const App: React.FC = () => {
         {currentView === 'gestor-servidores' && (
           <GestorServidores 
             servers={servers} 
-            setServers={(list) => handleSaveServer(list[list.length - 1])} 
+            setServers={(list: any[]) => handleSaveServer(list[list.length - 1])} 
             onDelete={handleDeleteServer} 
           />
         )}
@@ -75,29 +78,36 @@ const App: React.FC = () => {
             clients={clients} 
             servers={servers} 
             plans={plans}
-            setClients={async (newList) => {
+            setClients={async (newList: any[]) => {
               const last = newList[newList.length - 1];
-              const { id, ...data } = last;
-              // Mapeia para os nomes exatos das colunas do seu banco (image_b335c9)
+              // Mapeia camelCase do frontend para snake_case do banco (conforme image_b335c9)
               const payload = {
-                name: data.name,
-                username: data.username,
-                password: data.password,
-                phone: data.phone,
-                server_id: (data as any).serverId, 
-                plan_id: (data as any).planId,
-                expiration_date: (data as any).expirationDate,
+                name: last.name,
+                username: last.username,
+                password: last.password,
+                phone: last.phone,
+                server_id: last.serverId || last.server_id, 
+                plan_id: last.planId || last.plan_id,
+                expiration_date: last.expirationDate || last.expiration_date,
                 user_id: session?.user?.id
               };
-              await supabase.from('clients').insert([payload]);
+              const { error } = await supabase.from('clients').insert([payload]);
+              if (error) alert("Erro ao salvar cliente: " + error.message);
               fetchData();
             }}
-            onDelete={async (id) => {
+            onDelete={async (id: string) => {
               await supabase.from('clients').delete().eq('id', id);
               fetchData();
             }}
-            getClientStatus={(date) => 'active'}
-            addDays={(d, v, u) => new Date().toISOString()}
+            getClientStatus={(date: string) => {
+              const days = (new Date(date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
+              return days < 0 ? 'expired' : days < 5 ? 'near_expiry' : 'active';
+            }}
+            addDays={(date: Date, months: number) => {
+              const d = new Date(date);
+              d.setMonth(d.getMonth() + months);
+              return d.toISOString();
+            }}
             onRenew={() => {}}
           />
         )}
