@@ -12,7 +12,6 @@ import LogoGenerator from './components/LogoGenerator';
 import AdAnalyzer from './components/AdAnalyzer';
 import SalesCopy from './components/SalesCopy';
 import Auth from './components/Auth';
-import LandingPage from './components/LandingPage';
 
 import GestorDashboard from './components/GestorDashboard';
 import GestorServidores from './components/GestorServidores';
@@ -21,11 +20,11 @@ import GestorTemplateAI from './components/GestorTemplateAI';
 import GestorCalendario from './components/GestorCalendario';
 import GestorPlanos from './components/GestorPlanos';
 
-import { supabase, checkSupabaseConnection } from './lib/supabase';
+import { supabase } from './lib/supabase';
 import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType | 'landing' | 'login' | 'signup'>('landing');
+  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
   const [session, setSession] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
@@ -41,7 +40,7 @@ const App: React.FC = () => {
       if (session) {
         fetchData(session.user.id);
         setupRealtimeSubscription(session.user.id);
-        if (currentView === 'landing' || currentView === 'login' || currentView === 'signup') {
+        if (currentView === 'login' || currentView === 'signup') {
           setCurrentView('dashboard');
         }
       }
@@ -54,9 +53,7 @@ const App: React.FC = () => {
         setupRealtimeSubscription(session.user.id);
         setCurrentView('dashboard');
       } else {
-        if (!session && currentView !== 'landing' && currentView !== 'login' && currentView !== 'signup') {
-            setCurrentView('landing');
-        }
+        setCurrentView('login');
       }
     });
 
@@ -142,6 +139,7 @@ const App: React.FC = () => {
           password: c.password,
           phone: c.phone,
           serverId: c.server_id,
+          /* FIXED: Map 'plan_id' from database to 'planId' property expected by the Client interface */
           planId: c.plan_id,
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date),
@@ -169,25 +167,16 @@ const App: React.FC = () => {
     await supabase.from('servers').upsert(toUpsert);
   };
 
-  /**
-   * Função centralizada para adicionar ou editar cliente com sincronização remota
-   */
   const syncClients = async (newClients: Client[]) => {
-    const userId = session?.user.id;
+    const userId = session?.user?.id;
     if (!userId) return;
-
-    // Detectar se um novo cliente foi adicionado para realizar a chamada remota
     const currentIds = clients.map(c => c.id);
     const newlyAdded = newClients.find(nc => !currentIds.includes(nc.id));
-
     let finalClients = [...newClients];
-
     if (newlyAdded && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === newlyAdded.serverId);
       const plan = plans.find(p => p.id === newlyAdded.planId);
-      
       if (server?.apiKey && server?.url) {
-        console.log("Sincronizando novo cliente com painel remoto...");
         const remoteResponse = await createRemoteIptvUser(server.url, server.apiKey, {
           username: newlyAdded.username,
           password: newlyAdded.password,
@@ -195,36 +184,20 @@ const App: React.FC = () => {
           nome: newlyAdded.name,
           whatsapp: newlyAdded.phone
         });
-
         if (remoteResponse.success && remoteResponse.data?.credenciais) {
-          // Atualizar dados com o que o painel retornou (ex: senha gerada ou m3u)
           const creds = remoteResponse.data.credenciais;
           newlyAdded.username = creds.usuario || newlyAdded.username;
           newlyAdded.password = creds.senha || newlyAdded.password;
           newlyAdded.url_m3u = creds.url_m3u;
-          
           finalClients = newClients.map(c => c.id === newlyAdded.id ? newlyAdded : c);
-          alert("Sucesso! Cliente criado no painel remoto.");
-        } else {
-          console.warn("Aviso: Cliente salvo localmente mas falhou no painel remoto: ", remoteResponse.message);
-          alert(`Aviso: ${remoteResponse.message}. O cliente foi salvo apenas no seu gestor.`);
         }
       }
     }
-
     setClients(finalClients);
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const toUpsert = finalClients.map(c => ({ 
-        id: c.id, 
-        user_id: userId, 
-        name: c.name, 
-        username: c.username, 
-        password: c.password, 
-        phone: c.phone, 
-        server_id: c.serverId, 
-        plan_id: c.planId, 
-        expiration_date: c.expirationDate,
-        url_m3u: c.url_m3u 
+        id: c.id, user_id: userId, name: c.name, username: c.username, password: c.password, 
+        phone: c.phone, server_id: c.serverId, plan_id: c.planId, expiration_date: c.expirationDate, url_m3u: c.url_m3u 
       }));
       await supabase.from('clients').upsert(toUpsert);
     }
@@ -251,37 +224,22 @@ const App: React.FC = () => {
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
     const client = clients.find(c => c.id === clientId);
     if (!client) return;
-
     let newExp = manualDate;
     let daysToAdd = 30;
-
     const plan = plans.find(p => p.id === (planId || client.planId));
     if (!manualDate && plan) {
       daysToAdd = plan.durationUnit === 'months' ? plan.durationValue * 30 : plan.durationValue;
       const baseDate = new Date(client.expirationDate + 'T00:00:00') < new Date() ? new Date() : new Date(client.expirationDate + 'T00:00:00');
       newExp = addDuration(baseDate, plan.durationValue, plan.durationUnit);
     }
-    
-    // Sincronização remota da renovação
     const userId = session?.user.id;
     if (userId && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === client.serverId);
       if (server?.apiKey && server?.url) {
-        console.log("Renovando no painel remoto...");
-        const remoteRes = await renewRemoteIptvUser(server.url, server.apiKey, client.username, daysToAdd);
-        if (!remoteRes.success) {
-           alert(`Aviso: Falha na renovação remota (${remoteRes.message}). A data local foi atualizada.`);
-        } else {
-           alert(`Renovação confirmada no painel remoto para ${client.name}!`);
-        }
+        await renewRemoteIptvUser(server.url, server.apiKey, client.username, daysToAdd);
       }
-
-      const { error } = await supabase.from('clients').update({ 
-        expiration_date: newExp, 
-        plan_id: planId || client.planId 
-      }).eq('id', clientId);
-      
-      if (!error) fetchData(session!.user.id);
+      await supabase.from('clients').update({ expiration_date: newExp, plan_id: planId || client.planId }).eq('id', clientId);
+      fetchData(session!.user.id);
     } else {
       const updated = clients.map(c => c.id === clientId ? {...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!)} : c);
       setClients(updated);
@@ -291,9 +249,7 @@ const App: React.FC = () => {
   if (authLoading) return <div className="h-screen flex items-center justify-center bg-[#0b0e14]"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   if (!session) {
-    if (currentView === 'login') return <Auth initialIsSignUp={false} onBack={() => setCurrentView('landing')} onDemoLogin={handleDemoLogin} />;
-    if (currentView === 'signup') return <Auth initialIsSignUp={true} onBack={() => setCurrentView('landing')} onDemoLogin={handleDemoLogin} />;
-    return <LandingPage onLogin={() => setCurrentView('login')} onSignup={() => setCurrentView('signup')} />;
+    return <Auth initialIsSignUp={currentView === 'signup'} onDemoLogin={handleDemoLogin} />;
   }
 
   const renderContent = () => {
@@ -303,8 +259,8 @@ const App: React.FC = () => {
         <div className="p-20 text-center space-y-8 animate-fade-in">
           <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
           <h2 className="text-3xl font-black mb-4">RECURSO <span className="text-blue-500">PRO</span></h2>
-          <p className="text-gray-400 max-w-md mx-auto">Esta ferramenta utiliza Inteligência Artificial avançada e está disponível apenas para assinantes ativos.</p>
-          <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20">Ver Planos e Assinar</button>
+          <p className="text-gray-400 max-w-md mx-auto">Esta ferramenta requer assinatura ativa.</p>
+          <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
         </div>
       );
     }
@@ -338,8 +294,7 @@ const App: React.FC = () => {
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">
                 {String(currentView).replace('gestor-', 'GESTOR / ')}
               </span>
-              {isPro && <span className="bg-blue-600/20 text-blue-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-blue-500/20 animate-pulse">Status: Assinante PRO</span>}
-              {(session?.user.id === 'demo-user-id' || session?.user.id === 'master-user-id') && <span className="bg-yellow-600/20 text-yellow-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-yellow-500/20">Modo Demo/Local</span>}
+              {isPro && <span className="bg-blue-600/20 text-blue-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-blue-500/20 animate-pulse">PRO</span>}
            </div>
         </header>
         {renderContent()}
