@@ -23,28 +23,17 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
   const [searchTerm, setSearchTerm] = useState('');
   
   const [formData, setFormData] = useState({ 
-    name: '', 
-    username: '', 
-    password: '', 
-    phone: '', 
-    email: '', 
-    serverId: '', 
-    planId: '', 
-    expirationDate: '' 
+    name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' 
   });
 
-  const [renewalData, setRenewalData] = useState({
-    planId: '',
-    manualDate: ''
-  });
+  const [renewalData, setRenewalData] = useState({ planId: '', manualDate: '' });
 
-  // Mapeia o nome do seu plano para o código aceito pela API (Evita Erro 400)
   const getApiPlanCode = (planName: string): string => {
     const name = planName.toLowerCase();
     if (name.includes('enterprise')) return 'enterprise';
     if (name.includes('business')) return 'business';
     if (name.includes('professional') || name.includes('pro')) return 'professional';
-    return 'starter'; // Padrão caso não encontre
+    return 'starter';
   };
 
   const getPlanDays = (plan: Plan): number => {
@@ -63,44 +52,21 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         },
         body: JSON.stringify(body)
       });
-      const data = await response.json();
-      return data;
+      return await response.json();
     } catch (error) {
       console.error("Erro na API:", error);
-      return { success: false, message: "Erro de conexão com o servidor IPTV." };
+      return { success: false, message: "Erro de conexão com o painel." };
     }
   };
 
-  const handleOpenCreate = () => {
-    setEditingClient(null);
-    setFormData({ name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEdit = (client: Client) => {
-    setEditingClient(client);
-    setFormData({ 
-      name: client.name, 
-      username: client.username, 
-      password: client.password || '', 
-      phone: client.phone, 
-      email: '', 
-      serverId: client.serverId, 
-      planId: client.planId, 
-      expirationDate: client.expirationDate 
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenRenew = (client: Client) => {
-    setRenewingClient(client);
-    setRenewalData({ planId: client.planId, manualDate: '' });
-    setIsRenewalModalOpen(true);
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert("Copiado para a área de transferência!");
   };
 
   const handleSaveClient = async () => {
     if (!formData.name || !formData.serverId || !formData.planId || !formData.username || !formData.password) {
-      alert("Por favor, preencha os campos obrigatórios.");
+      alert("Preencha todos os campos!");
       return;
     }
 
@@ -116,23 +82,16 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       setClients(updatedClients);
       setIsModalOpen(false);
     } else {
-      // Criação no Painel Real via API
-      const apiPayload = {
+      const apiResult = await callIptvApi({
         action: "create",
         username: formData.username,
         password: formData.password,
         plan: getApiPlanCode(selectedPlan?.name || ''),
-        email: formData.email,
         nome: formData.name,
         whatsapp: formData.phone
-      };
-
-      const apiResult = await callIptvApi(apiPayload);
+      });
 
       if (apiResult.success) {
-        // Usa a data retornada pela API ou calcula localmente
-        const exp = apiResult.data?.data_vencimento || formData.expirationDate || addDays(new Date(), 1);
-
         const newClient: Client = {
           id: apiResult.data?.id?.toString() || Date.now().toString(),
           name: formData.name,
@@ -141,15 +100,15 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
           phone: formData.phone,
           serverId: formData.serverId,
           planId: formData.planId,
-          expirationDate: exp,
-          status: getClientStatus(exp)
+          expirationDate: apiResult.data?.data_vencimento || "",
+          status: getClientStatus(apiResult.data?.data_vencimento),
+          notes: apiResult.data?.credenciais?.url_m3u || "" // Armazena a URL M3U
         };
-        
         setClients([...clients, newClient]);
         setIsModalOpen(false);
-        alert("Cliente criado e ativo no painel!");
+        alert("Cliente criado com sucesso!");
       } else {
-        alert("Erro no Painel (400/401): " + apiResult.message);
+        alert("Erro: " + apiResult.message);
       }
     }
   };
@@ -166,16 +125,25 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     });
 
     if (apiResult.success) {
-      // Atualiza a data com o que o servidor IPTV respondeu
-      const novaData = apiResult.data?.nova_data_vencimento;
-      onRenew(renewingClient.id, renewalData.planId, novaData);
-      
+      onRenew(renewingClient.id, renewalData.planId, apiResult.data?.nova_data_vencimento);
       setIsRenewalModalOpen(false);
       setRenewingClient(null);
-      alert("Assinatura renovada no painel!");
+      alert("Renovado com sucesso!");
     } else {
       alert("Erro ao renovar: " + apiResult.message);
     }
+  };
+
+  const handleOpenCreate = () => {
+    setEditingClient(null);
+    setFormData({ name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenRenew = (client: Client) => {
+    setRenewingClient(client);
+    setRenewalData({ planId: client.planId, manualDate: '' });
+    setIsRenewalModalOpen(true);
   };
 
   const filteredClients = clients.filter(c => 
@@ -188,25 +156,17 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-black tracking-tight text-white uppercase italic">Gestão de <span className="text-blue-500">Clientes</span></h1>
-          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Sincronizado com jordantv.shop</p>
+          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Sincronizado via API</p>
         </div>
-        <button 
-          onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20"
-        >
+        <button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20">
           <span className="text-xl">+</span> Novo Cliente
         </button>
       </div>
 
       <div className="mb-6 relative">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
-        <input 
-          type="text" 
-          placeholder="Buscar por nome ou usuário..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm text-white focus:border-blue-500 outline-none transition-all"
-        />
+        <input type="text" placeholder="Buscar cliente..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm text-white focus:border-blue-500 outline-none" />
       </div>
 
       <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
@@ -214,9 +174,8 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
           <thead className="bg-black/20 border-b border-gray-800">
             <tr>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Cliente</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Credenciais</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Plano</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Expiração</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Acesso</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Vencimento</th>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-center">Status</th>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-right">Ações</th>
             </tr>
@@ -225,41 +184,33 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
             {filteredClients.map(c => (
               <tr key={c.id} className="hover:bg-white/[0.02] transition-colors">
                 <td className="px-8 py-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-500 font-bold">
-                      {c.name[0].toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-white">{c.name}</p>
-                      <p className="text-[10px] text-gray-500 font-bold">{c.phone}</p>
-                    </div>
-                  </div>
+                  <p className="font-bold text-sm text-white">{c.name}</p>
+                  <p className="text-[10px] text-gray-500">{c.phone}</p>
                 </td>
                 <td className="px-8 py-6">
-                  <div className="text-xs">
-                    <p className="text-gray-400 font-mono">U: {c.username}</p>
-                    <p className="text-gray-500 font-mono">P: {c.password}</p>
+                  <div className="text-xs font-mono">
+                    <p className="text-gray-400">U: {c.username}</p>
+                    <p className="text-gray-500">P: {c.password}</p>
                   </div>
                 </td>
-                <td className="px-8 py-6 text-xs font-bold text-gray-300">
-                  {plans.find(p => p.id === c.planId)?.name || 'N/A'}
-                </td>
                 <td className="px-8 py-6 text-sm font-mono text-gray-300">
-                  {new Date(c.expirationDate).toLocaleDateString('pt-BR')}
+                  {c.expirationDate ? new Date(c.expirationDate).toLocaleDateString('pt-BR') : '---'}
                 </td>
                 <td className="px-8 py-6 text-center">
                   <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-md border ${
                     getClientStatus(c.expirationDate) === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                    getClientStatus(c.expirationDate) === 'expired' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
-                    'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                    'bg-red-500/10 text-red-500 border-red-500/20'
                   }`}>
                     {getClientStatus(c.expirationDate)}
                   </span>
                 </td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex justify-end gap-2">
+                    {/* BOTÃO COPIAR LINK M3U */}
+                    {c.notes && (
+                      <button onClick={() => copyToClipboard(c.notes!)} className="p-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all" title="Copiar Link M3U">🔗</button>
+                    )}
                     <button onClick={() => handleOpenRenew(c)} className="p-2 rounded-lg bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all">🔄</button>
-                    <button onClick={() => handleOpenEdit(c)} className="p-2 rounded-lg bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all">✏️</button>
                     <button onClick={() => onDelete(c.id)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">🗑️</button>
                   </div>
                 </td>
@@ -269,21 +220,19 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </table>
       </div>
 
-      {/* MODAL CRIAR/EDITAR */}
+      {/* MODAIS (ESTRUTURA IGUAL AO ANTERIOR) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative w-full max-w-xl bg-[#141824] rounded-[32px] border border-gray-800 p-8 shadow-2xl">
-            <h2 className="text-2xl font-black text-white mb-6 uppercase italic">
-              {editingClient ? 'Editar Cliente' : 'Novo Cadastro IPTV'}
-            </h2>
+            <h2 className="text-2xl font-black text-white mb-6 uppercase italic">Novo Cadastro IPTV</h2>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <input placeholder="Nome" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
               <input placeholder="WhatsApp" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <input placeholder="Usuário" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
-              <input placeholder="Senha (Mín. 6 carac.)" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+              <input placeholder="Senha" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-6">
               <select value={formData.planId} onChange={e => setFormData({ ...formData, planId: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none">
@@ -297,28 +246,23 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
             </div>
             <div className="flex justify-end gap-4">
               <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Cancelar</button>
-              <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs">Ativar no Painel</button>
+              <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs">Criar no Painel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL RENOVAÇÃO */}
       {isRenewalModalOpen && renewingClient && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
           <div className="relative w-full max-w-sm bg-[#141824] rounded-[32px] border border-blue-600/30 p-8 shadow-2xl">
-            <h2 className="text-xl font-black text-white uppercase italic text-center mb-6">Renovação Direta</h2>
+            <h2 className="text-xl font-black text-white uppercase italic text-center mb-6">Renovar Assinatura</h2>
             <div className="space-y-4">
-              <select 
-                value={renewalData.planId} 
-                onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })} 
-                className="w-full bg-black/40 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-blue-500"
-              >
+              <select value={renewalData.planId} onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-blue-500">
                 <option value="">Selecione o Plano</option>
                 {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs shadow-lg shadow-blue-600/20">Confirmar no Painel</button>
+              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs">Confirmar Renovação</button>
             </div>
           </div>
         </div>
