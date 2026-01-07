@@ -30,7 +30,7 @@ export default function GestorClientes({ clients, setClients, servers, plans, on
     try {
       const selectedPlan = plans.find(p => p.id === formData.planId);
       
-      // SOLUÇÃO DO ERRO: Tudo dentro de um único objeto { ... }
+      // Chamada corrigida com objeto único
       const result = await createRemoteIptvUser({
         serverId: formData.serverId,
         username: formData.username,
@@ -42,7 +42,17 @@ export default function GestorClientes({ clients, setClients, servers, plans, on
 
       if (result.success) {
         const expDate = result.data?.data_vencimento || addDays(new Date(), selectedPlan?.durationValue || 1, 'months');
-        const newClient = { ...formData, expirationDate: expDate, status: getClientStatus(expDate) } as any;
+        const newClient: Client = {
+          id: crypto.randomUUID(),
+          name: formData.name,
+          username: formData.username,
+          password: formData.password,
+          phone: formData.phone,
+          serverId: formData.serverId,
+          planId: formData.planId,
+          expirationDate: expDate,
+          status: getClientStatus(expDate)
+        };
         setClients([...clients, newClient]);
         setIsModalOpen(false);
         alert("Cliente criado com sucesso!");
@@ -58,15 +68,15 @@ export default function GestorClientes({ clients, setClients, servers, plans, on
 
   return (
     <div className="p-8 text-white max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-8 text-white">
-        <h1 className="text-3xl font-black italic uppercase tracking-tighter">Gestão de <span className="text-blue-500">Clientes</span></h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-black italic uppercase italic tracking-tighter">Gestão de <span className="text-blue-500">Clientes</span></h1>
         <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-8 py-3 rounded-2xl font-black hover:bg-blue-700 transition-all">
           + NOVO ACESSO
         </button>
       </div>
 
-      <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+        <table className="w-full text-left">
           <thead className="bg-black/40 text-[10px] font-black uppercase text-gray-500 tracking-widest">
             <tr>
               <th className="p-6">Cliente / Usuário</th>
@@ -95,26 +105,26 @@ export default function GestorClientes({ clients, setClients, servers, plans, on
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-[#141824] p-10 rounded-[40px] border border-gray-800 w-full max-w-md shadow-2xl">
-             <h2 className="text-2xl font-black mb-6 uppercase italic text-white">Novo Acesso</h2>
+          <div className="bg-[#141824] p-10 rounded-[40px] border border-gray-800 w-full max-w-md shadow-2xl text-white">
+             <h2 className="text-2xl font-black mb-6 uppercase italic">Novo Acesso</h2>
              <div className="space-y-4">
                 <input placeholder="Nome" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none focus:border-blue-500" onChange={e => setFormData({...formData, name: e.target.value})} />
                 <div className="grid grid-cols-2 gap-4">
                   <input placeholder="Usuário" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none focus:border-blue-500" onChange={e => setFormData({...formData, username: e.target.value})} />
                   <input placeholder="Senha" type="password" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none focus:border-blue-500" onChange={e => setFormData({...formData, password: e.target.value})} />
                 </div>
-                <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, serverId: e.target.value})}>
+                <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none" onChange={e => setFormData({...formData, serverId: e.target.value})} value={formData.serverId}>
                   <option value="">Selecione o Servidor</option>
                   {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
-                <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white" onChange={e => setFormData({...formData, planId: e.target.value})}>
+                <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none" onChange={e => setFormData({...formData, planId: e.target.value})} value={formData.planId}>
                   <option value="">Selecione o Plano</option>
                   {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-                <button disabled={loading} onClick={handleSaveClient} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase text-xs hover:bg-blue-700 transition-all">
-                  {loading ? 'SINCRONIZANDO...' : 'ATIVAR AGORA'}
+                <button disabled={loading} onClick={handleSaveClient} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase text-xs hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/30">
+                  {loading ? 'PROCESSANDO...' : 'ATIVAR AGORA'}
                 </button>
-                <button onClick={() => setIsModalOpen(false)} className="w-full text-gray-500 font-bold text-[10px] uppercase">Cancelar</button>
+                <button onClick={() => setIsModalOpen(false)} className="w-full text-gray-500 font-bold text-[10px] uppercase tracking-widest mt-2">Cancelar</button>
              </div>
           </div>
         </div>
