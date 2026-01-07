@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Client, Server, Plan } from '../types';
 
-// Configurações da API IPTV (Substitua pela sua chave real)
 const IPTV_API_URL = 'https://jordantv.shop/api/create_user.php';
 const IPTV_API_KEY = '0d05ae3a98bceef41e468d7a0bbc3e9147c4082c2eabea5d9e0c596a1240ac07';
 
@@ -39,12 +38,17 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     manualDate: ''
   });
 
-  // FUNÇÃO AUXILIAR PARA CALCULAR DIAS TOTAIS DO PLANO (Compatível com GestorPlanos)
+  // Mapeia o nome do seu plano para o código aceito pela API (Evita Erro 400)
+  const getApiPlanCode = (planName: string): string => {
+    const name = planName.toLowerCase();
+    if (name.includes('enterprise')) return 'enterprise';
+    if (name.includes('business')) return 'business';
+    if (name.includes('professional') || name.includes('pro')) return 'professional';
+    return 'starter'; // Padrão caso não encontre
+  };
+
   const getPlanDays = (plan: Plan): number => {
-    if (plan.durationUnit === 'days') {
-      return plan.durationValue || 0;
-    }
-    // Se for meses (ou se usar a propriedade antiga .months), converte para dias
+    if (plan.durationUnit === 'days') return plan.durationValue || 0;
     const months = plan.durationValue || plan.months || 0;
     return months * 30;
   };
@@ -59,7 +63,8 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         },
         body: JSON.stringify(body)
       });
-      return await response.json();
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error("Erro na API:", error);
       return { success: false, message: "Erro de conexão com o servidor IPTV." };
@@ -111,52 +116,47 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       setClients(updatedClients);
       setIsModalOpen(false);
     } else {
-      const apiResult = await callIptvApi({
+      // Criação no Painel Real via API
+      const apiPayload = {
         action: "create",
         username: formData.username,
         password: formData.password,
-        plan: selectedPlan?.name.toLowerCase() || "starter",
+        plan: getApiPlanCode(selectedPlan?.name || ''),
         email: formData.email,
-        nome: formData.name
-      });
+        nome: formData.name,
+        whatsapp: formData.phone
+      };
+
+      const apiResult = await callIptvApi(apiPayload);
 
       if (apiResult.success) {
-        let exp = formData.expirationDate;
-        if (!exp && selectedPlan) {
-          // Usa a lógica de meses para a função addDays (fallback de 1 mês)
-          const monthsToAdd = selectedPlan.durationUnit === 'months' 
-            ? (selectedPlan.durationValue || selectedPlan.months || 1)
-            : (selectedPlan.durationValue || 30) / 30;
-          
-          exp = addDays(new Date(), monthsToAdd);
-        }
+        // Usa a data retornada pela API ou calcula localmente
+        const exp = apiResult.data?.data_vencimento || formData.expirationDate || addDays(new Date(), 1);
 
         const newClient: Client = {
-          id: apiResult.data?.cliente_id?.toString() || Date.now().toString(),
+          id: apiResult.data?.id?.toString() || Date.now().toString(),
           name: formData.name,
-          username: formData.username,
-          password: formData.password,
+          username: apiResult.data?.credenciais?.usuario || formData.username,
+          password: apiResult.data?.credenciais?.senha || formData.password,
           phone: formData.phone,
           serverId: formData.serverId,
           planId: formData.planId,
-          expirationDate: exp || new Date().toISOString().split('T')[0],
-          status: getClientStatus(exp || new Date().toISOString().split('T')[0])
+          expirationDate: exp,
+          status: getClientStatus(exp)
         };
+        
         setClients([...clients, newClient]);
         setIsModalOpen(false);
-        alert("Cliente criado no painel!");
+        alert("Cliente criado e ativo no painel!");
       } else {
-        alert("Erro no Painel IPTV: " + apiResult.message);
+        alert("Erro no Painel (400/401): " + apiResult.message);
       }
     }
   };
 
   const handleConfirmRenewal = async () => {
     if (!renewingClient) return;
-
     const selectedPlan = plans.find(p => p.id === renewalData.planId);
-    
-    // CORREÇÃO TS18048: Calculando os dias de forma segura
     const diasParaAdicionar = selectedPlan ? getPlanDays(selectedPlan) : 30;
 
     const apiResult = await callIptvApi({
@@ -166,14 +166,13 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     });
 
     if (apiResult.success) {
-      if (renewalData.manualDate) {
-        onRenew(renewingClient.id, '', renewalData.manualDate);
-      } else if (renewalData.planId) {
-        onRenew(renewingClient.id, renewalData.planId);
-      }
+      // Atualiza a data com o que o servidor IPTV respondeu
+      const novaData = apiResult.data?.nova_data_vencimento;
+      onRenew(renewingClient.id, renewalData.planId, novaData);
+      
       setIsRenewalModalOpen(false);
       setRenewingClient(null);
-      alert("Renovado com sucesso!");
+      alert("Assinatura renovada no painel!");
     } else {
       alert("Erro ao renovar: " + apiResult.message);
     }
@@ -186,11 +185,10 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
 
   return (
     <div className="p-8 animate-fade-in max-w-[1400px] mx-auto">
-      {/* Cabeçalho */}
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-black tracking-tight text-white uppercase italic">Gestão de <span className="text-blue-500">Clientes</span></h1>
-          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Painel de controle de acessos</p>
+          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Sincronizado com jordantv.shop</p>
         </div>
         <button 
           onClick={handleOpenCreate}
@@ -200,7 +198,6 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </button>
       </div>
 
-      {/* Busca */}
       <div className="mb-6 relative">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
         <input 
@@ -212,7 +209,6 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         />
       </div>
 
-      {/* Tabela */}
       <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
         <table className="w-full text-left">
           <thead className="bg-black/20 border-b border-gray-800">
@@ -287,7 +283,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <input placeholder="Usuário" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
-              <input placeholder="Senha" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+              <input placeholder="Senha (Mín. 6 carac.)" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-6">
               <select value={formData.planId} onChange={e => setFormData({ ...formData, planId: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none">
@@ -300,8 +296,8 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
               </select>
             </div>
             <div className="flex justify-end gap-4">
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Sair</button>
-              <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs">Salvar</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Cancelar</button>
+              <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs">Ativar no Painel</button>
             </div>
           </div>
         </div>
@@ -322,7 +318,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
                 <option value="">Selecione o Plano</option>
                 {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs shadow-lg shadow-blue-600/20">Ativar Renovação</button>
+              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs shadow-lg shadow-blue-600/20">Confirmar no Painel</button>
             </div>
           </div>
         </div>
