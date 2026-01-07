@@ -20,8 +20,15 @@ const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
   }
 };
 
-// Ajustado para receber serverId dentro do payload
-export const createRemoteIptvUser = async (payload: { serverId: string; [key: string]: any }) => {
+// Definição com APENAS UM ARGUMENTO (payload)
+export const createRemoteIptvUser = async (payload: { 
+  serverId: string; 
+  username: string; 
+  password?: string; 
+  plan: string; 
+  nome?: string; 
+  whatsapp?: string; 
+}) => {
   return await callSecureIptvApi({
     action: 'create',
     ...payload
