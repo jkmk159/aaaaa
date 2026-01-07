@@ -37,7 +37,7 @@ export default function GestorClientes({ clients, setClients, servers, plans, on
       const selectedPlan = plans.find(p => p.id === formData.planId);
       
       // Chama a API IPTV
-      const result = await createRemoteIptvUser(formData.serverId, {
+      const result = await createRemoteIptvUser({ serverId: formData.serverId, ... })
         username: formData.username,
         password: formData.password,
         plan: selectedPlan?.name || 'starter',
