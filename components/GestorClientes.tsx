@@ -55,7 +55,6 @@ const GestorClientes: React.FC<Props> = ({
   addDays,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
@@ -73,12 +72,29 @@ const GestorClientes: React.FC<Props> = ({
      SALVAR CLIENTE
   ================================ */
   const handleSaveClient = async () => {
-    if (!formData.name || !formData.username || !formData.password || !formData.planId) {
+    if (
+      !formData.name ||
+      !formData.username ||
+      !formData.password ||
+      !formData.planId ||
+      !formData.serverId
+    ) {
       alert('Preencha os campos obrigatórios.');
       return;
     }
 
-    // 🔥 CRIA NO PAINEL IPTV
+    /* 🔐 GARANTE USUÁRIO LOGADO */
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      alert('Usuário não autenticado.');
+      return;
+    }
+
+    /* 🔥 1. CRIA NO PAINEL IPTV */
     try {
       await criarUsuarioIPTV({
         username: formData.username,
@@ -93,24 +109,47 @@ const GestorClientes: React.FC<Props> = ({
       return;
     }
 
-    // 📆 DATA DE EXPIRAÇÃO
+    /* 📆 DATA DE EXPIRAÇÃO */
     let exp = formData.expirationDate;
     if (!exp) {
       const plan = plans.find(p => p.id === formData.planId);
       exp = addDays(new Date(), plan?.durationValue || 1);
     }
 
-    // 💾 SALVA NO GESTOR (LOCAL)
+    /* 💾 2. SALVA NO SUPABASE (clients) */
+    const { data: inserted, error: insertError } = await supabase
+      .from('clients')
+      .insert([
+        {
+          name: formData.name,
+          username: formData.username,
+          password: formData.password,
+          phone: formData.phone,
+          server_id: formData.serverId,
+          plan_id: formData.planId,
+          expiration_date: exp,
+          user_id: user.id, // 🔥 ESSENCIAL (FK)
+        },
+      ])
+      .select()
+      .single();
+
+    if (insertError) {
+      alert(`Erro ao salvar no gestor: ${insertError.message}`);
+      return;
+    }
+
+    /* 🧠 3. ATUALIZA STATE LOCAL */
     const newClient: Client = {
-      id: Date.now().toString(),
-      name: formData.name,
-      username: formData.username,
-      password: formData.password,
-      phone: formData.phone,
-      serverId: formData.serverId,
-      planId: formData.planId,
-      expirationDate: exp!,
-      status: getClientStatus(exp!),
+      id: inserted.id,
+      name: inserted.name,
+      username: inserted.username,
+      password: inserted.password,
+      phone: inserted.phone,
+      serverId: inserted.server_id,
+      planId: inserted.plan_id,
+      expirationDate: inserted.expiration_date,
+      status: getClientStatus(inserted.expiration_date),
     };
 
     setClients([...clients, newClient]);
@@ -132,7 +171,6 @@ const GestorClientes: React.FC<Props> = ({
         <h1 className="text-3xl font-black text-white">Clientes</h1>
         <button
           onClick={() => {
-            setEditingClient(null);
             setFormData({
               name: '',
               username: '',
@@ -224,6 +262,21 @@ const GestorClientes: React.FC<Props> = ({
               {plans.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="w-full mb-6 p-3 bg-black/40"
+              value={formData.serverId}
+              onChange={e =>
+                setFormData({ ...formData, serverId: e.target.value })
+              }
+            >
+              <option value="">Servidor</option>
+              {servers.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
                 </option>
               ))}
             </select>
