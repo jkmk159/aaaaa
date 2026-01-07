@@ -1,7 +1,5 @@
 
-/**
- * SERVIÇO DE INTEGRAÇÃO IPTV (CLOUDSERVE API)
- */
+import { supabase } from '../lib/supabase';
 
 interface IptvResponse {
   success: boolean;
@@ -9,87 +7,37 @@ interface IptvResponse {
   data?: any;
 }
 
-const DEFAULT_ENDPOINT = "https://jordantv.shop/api/create_user.php";
-
 /**
- * Cria um novo usuário no painel remoto
+ * Esta função chama a Edge Function que você criou no Supabase.
+ * Isso esconde sua API KEY e evita erros de CORS.
  */
-export const createRemoteIptvUser = async (baseUrl: string, apiKey: string, payload: {
-  username: string;
-  password?: string;
-  plan: string;
-  nome?: string;
-  whatsapp?: string;
-  email?: string;
-}): Promise<IptvResponse> => {
+const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
   try {
-    const url = baseUrl || DEFAULT_ENDPOINT;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        action: "create",
-        ...payload
-      })
+    const { data, error } = await supabase.functions.invoke('iptv-api', {
+      body: body
     });
 
-    return await response.json();
-  } catch (error) {
-    console.error("Erro ao criar usuário remoto:", error);
-    return { success: false, message: "Erro de conexão com o servidor IPTV." };
+    if (error) throw error;
+    return data;
+  } catch (error: any) {
+    console.error("Erro na Edge Function:", error);
+    return { success: false, message: "Falha na conexão segura com o painel." };
   }
 };
 
-/**
- * Renova um usuário no painel remoto
- */
-export const renewRemoteIptvUser = async (baseUrl: string, apiKey: string, username: string, days: number): Promise<IptvResponse> => {
-  try {
-    const url = baseUrl || DEFAULT_ENDPOINT;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        action: "renew",
-        username,
-        dias: days
-      })
-    });
-
-    return await response.json();
-  } catch (error) {
-    console.error("Erro ao renovar usuário remoto:", error);
-    return { success: false, message: "Erro de conexão ao renovar no painel." };
-  }
+export const createRemoteIptvUser = async (serverId: string, payload: any) => {
+  return await callSecureIptvApi({
+    action: 'create',
+    serverId,
+    ...payload
+  });
 };
 
-/**
- * Busca informações de um usuário no painel remoto
- */
-export const getRemoteIptvUser = async (baseUrl: string, apiKey: string, username: string): Promise<IptvResponse> => {
-  try {
-    const url = baseUrl || DEFAULT_ENDPOINT;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        action: "get",
-        username
-      })
-    });
-
-    return await response.json();
-  } catch (error) {
-    console.error("Erro ao buscar usuário remoto:", error);
-    return { success: false, message: "Erro ao consultar painel." };
-  }
+export const renewRemoteIptvUser = async (serverId: string, username: string, days: number) => {
+  return await callSecureIptvApi({
+    action: 'renew',
+    serverId,
+    username,
+    days
+  });
 };
