@@ -3,7 +3,7 @@ import { Client, Server, Plan } from '../types';
 
 // Configurações da API IPTV (Substitua pela sua chave real)
 const IPTV_API_URL = 'https://jordantv.shop/api/create_user.php';
-const IPTV_API_KEY = 'SUA_API_KEY_AQUI';
+const IPTV_API_KEY = '0d05ae3a98bceef41e468d7a0bbc3e9147c4082c2eabea5d9e0c596a1240ac07';
 
 interface Props {
   clients: Client[];
