@@ -11,7 +11,6 @@ const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
     const { data, error } = await supabase.functions.invoke('iptv-api', {
       body: body
     });
-
     if (error) throw error;
     return data;
   } catch (error: any) {
@@ -20,7 +19,7 @@ const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
   }
 };
 
-// Definição com APENAS UM ARGUMENTO (payload)
+// Aceita um objeto único como argumento
 export const createRemoteIptvUser = async (payload: { 
   serverId: string; 
   username: string; 
