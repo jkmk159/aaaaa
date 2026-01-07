@@ -39,7 +39,6 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     manualDate: ''
   });
 
-  // Função Auxiliar para falar com a API IPTV
   const callIptvApi = async (body: any) => {
     try {
       const response = await fetch(IPTV_API_URL, {
@@ -52,7 +51,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       });
       return await response.json();
     } catch (error) {
-      console.error("Erro na chamada da API:", error);
+      console.error("Erro na API:", error);
       return { success: false, message: "Erro de conexão com o servidor IPTV." };
     }
   };
@@ -86,15 +85,13 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
 
   const handleSaveClient = async () => {
     if (!formData.name || !formData.serverId || !formData.planId || !formData.username || !formData.password) {
-      alert("Por favor, preencha os campos obrigatórios, incluindo login e senha.");
+      alert("Por favor, preencha os campos obrigatórios.");
       return;
     }
 
     const selectedPlan = plans.find(p => p.id === formData.planId);
 
     if (editingClient) {
-      // Nota: A sua documentação não mostra endpoint de "Update", apenas "Create". 
-      // Geralmente em IPTV, edição de senha/plano é feita no mesmo endpoint ou manualmente.
       const updatedClients = clients.map(c => {
         if (c.id === editingClient.id) {
           return { ...c, ...formData, status: getClientStatus(formData.expirationDate || c.expirationDate) };
@@ -104,12 +101,11 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       setClients(updatedClients);
       setIsModalOpen(false);
     } else {
-      // --- CRIAÇÃO NO PAINEL IPTV ---
       const apiResult = await callIptvApi({
         action: "create",
         username: formData.username,
         password: formData.password,
-        plan: selectedPlan?.name.toLowerCase() || "starter", // Envia o nome do plano minúsculo
+        plan: selectedPlan?.name.toLowerCase() || "starter",
         email: formData.email,
         nome: formData.name
       });
@@ -117,6 +113,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       if (apiResult.success) {
         let exp = formData.expirationDate;
         if (!exp && formData.planId) {
+          // CORREÇÃO TS18048: Usando fallback (0) para meses caso o plano seja indefinido
           exp = addDays(new Date(), selectedPlan?.months || 1);
         }
 
@@ -133,7 +130,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         };
         setClients([...clients, newClient]);
         setIsModalOpen(false);
-        alert("Cliente criado com sucesso no painel!");
+        alert("Cliente criado no painel!");
       } else {
         alert("Erro no Painel IPTV: " + apiResult.message);
       }
@@ -144,10 +141,9 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     if (!renewingClient) return;
 
     const selectedPlan = plans.find(p => p.id === renewalData.planId);
-    // Calcula os dias baseado no plano (ex: 1 mês = 30 dias)
+    // CORREÇÃO TS18048: Definindo 30 dias como padrão se selectedPlan for undefined
     const diasParaAdicionar = selectedPlan ? (selectedPlan.months * 30) : 30;
 
-    // --- RENOVAÇÃO NO PAINEL IPTV ---
     const apiResult = await callIptvApi({
       action: "renew",
       username: renewingClient.username,
@@ -162,20 +158,9 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       }
       setIsRenewalModalOpen(false);
       setRenewingClient(null);
-      alert("Assinatura renovada com sucesso!");
+      alert("Renovado com sucesso!");
     } else {
-      alert("Erro ao renovar no painel: " + apiResult.message);
-    }
-  };
-
-  const handleDeleteClient = async (id: string) => {
-    const clientToDelete = clients.find(c => c.id === id);
-    if (!clientToDelete) return;
-
-    if (window.confirm(`Tem certeza que deseja excluir ${clientToDelete.name}?`)) {
-      // Nota: Como não há "action: delete" na sua imagem, 
-      // aqui ele apenas remove do seu sistema. 
-      onDelete(id);
+      alert("Erro ao renovar: " + apiResult.message);
     }
   };
 
@@ -271,9 +256,9 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
                 </td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex justify-end gap-3">
-                    <button onClick={() => handleOpenRenew(c)} className="p-2.5 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Renovar">🔄</button>
-                    <button onClick={() => handleOpenEdit(c)} className="p-2.5 rounded-xl bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all shadow-sm" title="Editar">✏️</button>
-                    <button onClick={() => handleDeleteClient(c.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" title="Excluir">🗑️</button>
+                    <button onClick={() => handleOpenRenew(c)} className="p-2.5 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all shadow-sm">🔄</button>
+                    <button onClick={() => handleOpenEdit(c)} className="p-2.5 rounded-xl bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all shadow-sm">✏️</button>
+                    <button onClick={() => onDelete(c.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm">🗑️</button>
                   </div>
                 </td>
               </tr>
@@ -293,7 +278,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nome Completo</label>
-                    <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
+                    <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Telefone</label>
@@ -303,7 +288,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Usuário (IPTV)</label>
-                    <input value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
+                    <input value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Senha (IPTV)</label>
@@ -342,26 +327,4 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
           <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-blue-600/30 p-10">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">🔄</div>
-              <h2 className="text-xl font-black text-white uppercase">Renovar no Painel</h2>
-              <p className="text-gray-500 text-xs font-bold uppercase">{renewingClient.name}</p>
-            </div>
-            <div className="space-y-6">
-              <select 
-                value={renewalData.planId} 
-                onChange={e => setRenewalData({ ...renewalData, planId: e.target.value, manualDate: '' })} 
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500"
-              >
-                <option value="">Selecione o Plano de Renovação</option>
-                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs">Confirmar Renovação</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default GestorClientes;
+              <div className="w-16 h-16 bg
