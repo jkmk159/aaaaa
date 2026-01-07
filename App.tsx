@@ -20,7 +20,7 @@ import GestorCalendario from './components/GestorCalendario';
 import GestorPlanos from './components/GestorPlanos';
 import GestorTemplateAI from './components/GestorTemplateAI';
 import Auth from './components/Auth';
-import LandingPage from './components/LandingPage';
+// import LandingPage from './components/LandingPage';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -43,7 +43,7 @@ const App: React.FC = () => {
     return 'active';
   };
 
-  const addDuration = (date: Date, value: number, unit: 'months' | 'days') => {
+  const addDuration = (date: Date, value: number, unit: 'months' | 'days'): string => {
     const d = new Date(date);
     if (unit === 'months') {
       d.setMonth(d.getMonth() + value);
@@ -96,14 +96,12 @@ const App: React.FC = () => {
     const userId = session?.user?.id;
     if (!userId) return;
 
-    // Detecta se é uma nova criação comparando IDs que começam com "temp-"
     const newlyAdded = newClientsList.find(nc => nc.id.startsWith('temp-'));
 
     if (newlyAdded && userId !== 'demo-user-id') {
       const plan = plans.find(p => p.id === newlyAdded.planId);
       
       try {
-        console.log("Chamando criação remota para:", newlyAdded.username);
         const remoteResponse = await createRemoteIptvUser({
           username: newlyAdded.username,
           password: newlyAdded.password,
@@ -119,15 +117,12 @@ const App: React.FC = () => {
             newlyAdded.password = creds.senha || newlyAdded.password;
             newlyAdded.url_m3u = creds.url_m3u;
           }
-          alert("✅ Sucesso! Usuário criado no painel IPTV.");
-        } else {
-          alert(`⚠️ Aviso: Salvo localmente, mas o painel retornou: ${remoteResponse.message}`);
+          alert("✅ Usuário criado no painel IPTV!");
         }
       } catch (err) {
-        console.error("Erro técnico na criação remota:", err);
+        console.error(err);
       }
 
-      // Salva no banco de dados definitivo
       const { data: savedClient, error } = await supabase.from('clients').insert([{
         name: newlyAdded.name,
         username: newlyAdded.username,
@@ -139,10 +134,7 @@ const App: React.FC = () => {
         user_id: userId
       }]).select().single();
 
-      if (error) {
-        console.error("Erro ao salvar no banco:", error);
-      } else {
-        // Atualiza a lista local com o ID real do banco
+      if (!error && savedClient) {
         const updatedList = newClientsList.map(c => c.id === newlyAdded.id ? {
           ...c, 
           id: savedClient.id,
@@ -175,7 +167,6 @@ const App: React.FC = () => {
       try {
         const remoteRes = await renewRemoteIptvUser(client.username, daysToAdd);
         if (remoteRes.success) alert("✅ Renovação remota concluída!");
-        else alert(`⚠️ Erro na renovação: ${remoteRes.message}`);
 
         await supabase.from('clients').update({ 
           expiration_date: newExp, 
@@ -184,7 +175,7 @@ const App: React.FC = () => {
         
         fetchData(userId);
       } catch (err) {
-        alert("❌ Erro ao processar renovação.");
+        alert("❌ Erro ao renovar.");
       }
     } else {
       const updated = clients.map(c => c.id === clientId ? {...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!)} : c);
@@ -194,7 +185,7 @@ const App: React.FC = () => {
 
   if (loading) return null;
   if (!session && !showAuth) return <LandingPage onLogin={() => setShowAuth(true)} onSignup={() => setShowAuth(true)} />;
-  if (!session && showAuth) return <Auth onBack={() => setShowAuth(false)} onDemoLogin={(email) => setSession({ user: { id: 'demo-user-id', email: email || 'demo@demo.com' } })} />;
+  if (!session && showAuth) return <Auth onBack={() => setShowAuth(false)} onDemoLogin={(email?: string) => setSession({ user: { id: 'demo-user-id', email: email || 'demo@demo.com' } })} />;
 
   return (
     <div className="flex bg-[#0b0e14] text-white min-h-screen">
@@ -210,8 +201,8 @@ const App: React.FC = () => {
         {currentView === 'sales-copy' && <SalesCopy />}
         {currentView === 'pricing' && <Pricing userEmail={session.user.email} isPro={isPro} />}
         {currentView === 'gestor-dashboard' && <GestorDashboard clients={clients} servers={[]} onNavigate={setCurrentView} onRenew={renewClient} getClientStatus={getClientStatus} />}
-        {currentView === 'gestor-servidores' && <div className="p-8 text-center py-40 animate-fade-in"><div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">🖥️</div><h2 className="text-2xl font-black italic uppercase tracking-tighter">API FIXA <span className="text-blue-500">CONFIGURADA</span></h2><p className="text-gray-500 text-xs font-bold uppercase tracking-widest mt-2 max-w-sm mx-auto leading-relaxed">Conectado ao painel JordanTV via Edge Function.</p></div>}
-        {currentView === 'gestor-clientes' && <GestorClientes clients={clients} setClients={handleSetClients} servers={[]} plans={plans} onRenew={renewClient} onDelete={(id) => setClients(clients.filter(c => c.id !== id))} getClientStatus={getClientStatus} addDays={addDuration as any} />}
+        {currentView === 'gestor-servidores' && <div className="p-8 text-center py-40 animate-fade-in"><div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">🖥️</div><h2 className="text-2xl font-black italic uppercase tracking-tighter">API FIXA <span className="text-blue-500">CONFIGURADA</span></h2></div>}
+        {currentView === 'gestor-clientes' && <GestorClientes clients={clients} setClients={handleSetClients} servers={[]} plans={plans} onRenew={renewClient} onDelete={(id) => setClients(clients.filter(c => c.id !== id))} getClientStatus={getClientStatus} addDays={addDuration} />}
         {currentView === 'gestor-calendario' && <GestorCalendario clients={clients} servers={[]} onNavigate={setCurrentView} />}
         {currentView === 'gestor-planos' && <GestorPlanos plans={plans} setPlans={setPlans} />}
         {currentView === 'gestor-template-ai' && <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />}
