@@ -65,6 +65,7 @@ export interface Client {
   planId: string;
   expirationDate: string;
   status: 'active' | 'expired' | 'near_expiry';
+  url_m3u?: string;
 }
 
 export type ViewType = 
