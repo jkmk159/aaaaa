@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Client, Plan } from '../types';
 
-interface Props {
+interface GestorClientesProps {
   clients: Client[];
   setClients: (clients: Client[]) => void;
   servers: any[]; 
@@ -13,7 +13,7 @@ interface Props {
   addDays: (date: Date, value: number, unit: 'months' | 'days') => string;
 }
 
-const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, onDelete, getClientStatus, addDays }) => {
+export default function GestorClientes({ clients, setClients, plans, onRenew, onDelete, getClientStatus, addDays }: GestorClientesProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -61,7 +61,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
 
   const handleSaveClient = () => {
     if (!formData.name || !formData.planId || !formData.username || !formData.password) {
-      alert("Por favor, preencha nome, usuário, senha e selecione um plano.");
+      alert("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
 
@@ -82,12 +82,13 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
       if (!exp && formData.planId) {
         const plan = plans.find(p => p.id === formData.planId);
         if (plan) {
+          // Passando os 3 argumentos exigidos pela interface
           exp = addDays(new Date(), plan.durationValue, plan.durationUnit);
         }
       }
 
       const newClient: Client = {
-        id: `temp-${Date.now()}`, // ID temporário para o handleSetClients detectar nova inclusão
+        id: `temp-${Date.now()}`,
         name: formData.name,
         username: formData.username,
         password: formData.password,
@@ -106,7 +107,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
   const handleConfirmRenewal = () => {
     if (!renewingClient) return;
     
-    // Passa os 3 argumentos conforme esperado pelo App.tsx
+    // Passando os 3 argumentos conforme esperado pelo App.tsx e pela Props interface
     onRenew(renewingClient.id, renewalData.planId, renewalData.manualDate);
 
     setIsRenewalModalOpen(false);
@@ -123,11 +124,11 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-black tracking-tight text-white italic">Clientes</h1>
-          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Gerencie seus assinantes de IPTV (Painel Integrado)</p>
+          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Gerencie seus assinantes (Painel Integrado)</p>
         </div>
         <button 
           onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs italic tracking-widest flex items-center gap-2 transition-all shadow-xl shadow-blue-600/20 active:scale-95"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs italic tracking-widest flex items-center gap-2 shadow-xl shadow-blue-600/20"
         >
           <span className="text-xl">+</span> Adicionar Cliente
         </button>
@@ -138,10 +139,10 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
           <span className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500 text-xl">🔍</span>
           <input 
             type="text" 
-            placeholder="Pesquisar por nome ou usuário..." 
+            placeholder="Pesquisar..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#141824] border border-gray-800 rounded-2xl py-5 pl-14 pr-6 text-sm font-bold focus:border-blue-500 outline-none transition-all placeholder:text-gray-700 shadow-inner"
+            className="w-full bg-[#141824] border border-gray-800 rounded-2xl py-5 pl-14 pr-6 text-sm font-bold focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
           />
         </div>
       </div>
@@ -155,7 +156,6 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Acesso</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Plano</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Expiração</th>
-                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Status</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Ações</th>
               </tr>
             </thead>
@@ -192,15 +192,6 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
                       {new Date(client.expirationDate).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="px-8 py-6">
-                      <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
-                        status === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                        status === 'near_expiry' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
-                        'bg-red-500/10 text-red-500 border-red-500/20'
-                      }`}>
-                        {status === 'active' ? 'Ativo' : status === 'near_expiry' ? 'Vencendo' : 'Expirado'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => handleOpenRenew(client)} className="p-2.5 bg-blue-600/10 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all">🔄</button>
                         <button onClick={() => handleOpenEdit(client)} className="p-2.5 bg-gray-800 text-gray-400 rounded-xl hover:bg-gray-700 hover:text-white transition-all">✏️</button>
@@ -228,33 +219,33 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                  <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: João Silva" className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" />
+                  <input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="João Silva" className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">WhatsApp</label>
-                  <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="5511999999999" className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" />
+                  <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="5511999999999" className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Usuário</label>
-                  <input value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" />
+                  <input value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Senha</label>
-                  <input value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" />
+                  <input value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Plano</label>
-                  <select value={formData.planId} onChange={e => setFormData({...formData, planId: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none appearance-none">
+                  <select value={formData.planId} onChange={e => setFormData({...formData, planId: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none appearance-none">
                     {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Expiração</label>
-                  <input type="date" value={formData.expirationDate} onChange={e => setFormData({...formData, expirationDate: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" />
+                  <input type="date" value={formData.expirationDate} onChange={e => setFormData({...formData, expirationDate: e.target.value})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                 </div>
               </div>
             </div>
@@ -273,14 +264,14 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
             <h3 className="text-2xl font-black italic uppercase tracking-tighter">Renovar <span className="text-blue-500">{renewingClient.name}</span></h3>
             <div className="space-y-6 text-left">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Plano de Renovação</label>
-                <select value={renewalData.planId} onChange={e => setRenewalData({...renewalData, planId: e.target.value, manualDate: ''})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold outline-none focus:border-blue-500">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Novo Plano</label>
+                <select value={renewalData.planId} onChange={e => setRenewalData({...renewalData, planId: e.target.value, manualDate: ''})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500">
                   {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Ou Data Manual</label>
-                <input type="date" value={renewalData.manualDate} onChange={e => setRenewalData({...renewalData, manualDate: e.target.value, planId: ''})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold outline-none focus:border-blue-500" />
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Data Manual</label>
+                <input type="date" value={renewalData.manualDate} onChange={e => setRenewalData({...renewalData, manualDate: e.target.value, planId: ''})} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
               </div>
             </div>
             <div className="flex gap-4">
@@ -292,6 +283,4 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, plans, onRenew, 
       )}
     </div>
   );
-};
-
-export default GestorClientes;
+}
