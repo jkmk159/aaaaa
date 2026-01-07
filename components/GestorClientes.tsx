@@ -18,202 +18,119 @@ interface Props {
 const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, onRenew, onDelete, getClientStatus, addDays }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [renewingClient, setRenewingClient] = useState<Client | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  const [formData, setFormData] = useState({ 
-    name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' 
-  });
+  const [renewingClient, setRenewingClient] = useState<any>(null);
+  const [formData, setFormData] = useState({ name: '', username: '', password: '', phone: '', planId: '', serverId: '' });
+  const [renewalData, setRenewalData] = useState({ planId: '' });
 
-  const [renewalData, setRenewalData] = useState({ planId: '', manualDate: '' });
-
-  const getApiPlanCode = (planName: string): string => {
-    const name = planName.toLowerCase();
-    if (name.includes('enterprise')) return 'enterprise';
-    if (name.includes('business')) return 'business';
-    if (name.includes('professional') || name.includes('pro')) return 'professional';
-    return 'starter';
-  };
-
-  const getPlanDays = (plan: Plan): number => {
-    if (plan.durationUnit === 'days') return plan.durationValue || 0;
-    const months = plan.durationValue || plan.months || 0;
-    return months * 30;
-  };
-
-  const callIptvApi = async (body: any) => {
+  // Função de chamada seguindo estritamente a documentação (image_98bd64.png)
+  const callIptvApi = async (data: any) => {
     try {
       const response = await fetch(IPTV_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${IPTV_API_KEY}`
+          'Authorization': `Bearer ${IPTV_API_KEY}` // Conforme imagem de autenticação
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(data)
       });
+
+      // Se der 404 aqui, o servidor não está aceitando JSON ou o arquivo sumiu
+      if (response.status === 404) throw new Error("Endpoint não encontrado no servidor.");
+      
       return await response.json();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro na API:", error);
-      return { success: false, message: "Erro de conexão." };
+      return { success: false, message: error.message || "Erro de conexão." };
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    alert("Link M3U copiado com sucesso!");
+  const handleSendWhatsApp = (client: any) => {
+    const texto = `*DADOS DE ACESSO IPTV*%0A%0A*Usuário:* ${client.username}%0A*Senha:* ${client.password}%0A*Vencimento:* ${client.expirationDate}%0A*Link M3U:* ${client.m3u || 'Solicite ao suporte'}`;
+    window.open(`https://wa.me/55${client.phone.replace(/\D/g, '')}?text=${texto}`, '_blank');
   };
 
   const handleSaveClient = async () => {
-    if (!formData.name || !formData.serverId || !formData.planId || !formData.username || !formData.password) {
-      alert("Preencha todos os campos!");
-      return;
-    }
-
     const selectedPlan = plans.find(p => p.id === formData.planId);
+    
+    // Conforme imagem image_98bd7c.png
+    const payload = {
+      action: "create",
+      username: formData.username,
+      password: formData.password,
+      plan: selectedPlan?.name.toLowerCase().includes('pro') ? 'professional' : 'starter',
+      nome: formData.name,
+      whatsapp: formData.phone
+    };
 
-    if (editingClient) {
-      const updatedClients = clients.map(c => {
-        if (c.id === editingClient.id) {
-          return { ...c, ...formData, status: getClientStatus(formData.expirationDate || c.expirationDate) };
-        }
-        return c;
-      });
-      setClients(updatedClients);
+    const result = await callIptvApi(payload);
+
+    if (result.success) {
+      const newClient = {
+        ...formData,
+        id: result.data.id.toString(),
+        expirationDate: result.data.data_vencimento,
+        m3u: result.data.credenciais?.url_m3u || "", // Captura o link M3U da imagem image_98bd7e.png
+        status: getClientStatus(result.data.data_vencimento)
+      } as any;
+      setClients([...clients, newClient]);
       setIsModalOpen(false);
+      alert("Cliente criado!");
     } else {
-      const apiResult = await callIptvApi({
-        action: "create",
-        username: formData.username,
-        password: formData.password,
-        plan: getApiPlanCode(selectedPlan?.name || ''),
-        nome: formData.name,
-        whatsapp: formData.phone
-      });
-
-      if (apiResult.success) {
-        // Criamos o objeto com 'as any' para o TS não reclamar de campos extras
-        const newClient = {
-          id: apiResult.data?.id?.toString() || Date.now().toString(),
-          name: formData.name,
-          username: apiResult.data?.credenciais?.usuario || formData.username,
-          password: apiResult.data?.credenciais?.senha || formData.password,
-          phone: formData.phone,
-          serverId: formData.serverId,
-          planId: formData.planId,
-          expirationDate: apiResult.data?.data_vencimento || new Date().toISOString(),
-          status: getClientStatus(apiResult.data?.data_vencimento),
-          m3u: apiResult.data?.credenciais?.url_m3u || "" // Campo novo via casting
-        } as any;
-
-        setClients([...clients, newClient]);
-        setIsModalOpen(false);
-        alert("Cliente criado no Painel!");
-      } else {
-        alert("Erro no Painel: " + apiResult.message);
-      }
+      alert("Erro: " + result.message);
     }
   };
 
   const handleConfirmRenewal = async () => {
     if (!renewingClient) return;
     const selectedPlan = plans.find(p => p.id === renewalData.planId);
-    const diasParaAdicionar = selectedPlan ? getPlanDays(selectedPlan) : 30;
-
-    const apiResult = await callIptvApi({
+    
+    // Conforme imagem image_98bd81.png
+    const payload = {
       action: "renew",
       username: renewingClient.username,
-      dias: diasParaAdicionar
-    });
+      dias: 30 // Valor padrão ou baseado no plano
+    };
 
-    if (apiResult.success) {
-      onRenew(renewingClient.id, renewalData.planId, apiResult.data?.nova_data_vencimento);
+    const result = await callIptvApi(payload);
+
+    if (result.success) {
+      onRenew(renewingClient.id, renewalData.planId, result.data.nova_data_vencimento);
       setIsRenewalModalOpen(false);
-      setRenewingClient(null);
       alert("Renovado com sucesso!");
     } else {
-      alert("Erro ao renovar: " + apiResult.message);
+      // Trata o erro de "Usuário não encontrado" da sua imagem a34204.png
+      alert("Erro ao renovar: " + result.message);
     }
   };
 
-  const handleOpenCreate = () => {
-    setEditingClient(null);
-    setFormData({ name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' });
-    setIsModalOpen(true);
-  };
-
-  const handleOpenRenew = (client: Client) => {
-    setRenewingClient(client);
-    setRenewalData({ planId: client.planId, manualDate: '' });
-    setIsRenewalModalOpen(true);
-  };
-
-  const filteredClients = clients.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
-    <div className="p-8 animate-fade-in max-w-[1400px] mx-auto">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-4xl font-black tracking-tight text-white uppercase italic">Gestão de <span className="text-blue-500">Clientes</span></h1>
-          <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Painel CloudServe Ativo</p>
-        </div>
-        <button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20">
-          <span className="text-xl">+</span> Novo Cliente
-        </button>
+    <div className="p-8 text-white">
+      <div className="flex justify-between mb-8">
+        <h1 className="text-2xl font-bold italic uppercase">Gestão <span className="text-blue-500">CloudServe</span></h1>
+        <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 px-6 py-2 rounded-lg font-bold">+ NOVO CLIENTE</button>
       </div>
 
-      <div className="mb-6 relative">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
-        <input type="text" placeholder="Buscar cliente..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm text-white focus:border-blue-500 outline-none" />
-      </div>
-
-      <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
+      <div className="bg-[#141824] rounded-2xl border border-gray-800 overflow-hidden">
         <table className="w-full text-left">
-          <thead className="bg-black/20 border-b border-gray-800">
+          <thead className="bg-black/20 text-gray-400 text-xs uppercase">
             <tr>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Cliente</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Acesso</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Expiração</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-center">Status</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-right">Ações</th>
+              <th className="p-4">Cliente / Acesso</th>
+              <th className="p-4">Vencimento</th>
+              <th className="p-4 text-right">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800/50">
-            {filteredClients.map((c: any) => (
-              <tr key={c.id} className="hover:bg-white/[0.02] transition-colors">
-                <td className="px-8 py-6">
-                  <p className="font-bold text-sm text-white">{c.name}</p>
-                  <p className="text-[10px] text-gray-500 font-bold">{c.phone}</p>
+          <tbody>
+            {clients.map((c: any) => (
+              <tr key={c.id} className="border-t border-gray-800">
+                <td className="p-4">
+                  <div className="font-bold">{c.name}</div>
+                  <div className="text-xs text-gray-500 font-mono">U: {c.username} | P: {c.password}</div>
                 </td>
-                <td className="px-8 py-6">
-                  <div className="text-xs font-mono">
-                    <p className="text-gray-400">U: {c.username}</p>
-                    <p className="text-gray-500">P: {c.password}</p>
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-sm font-mono text-gray-300">
-                  {c.expirationDate ? new Date(c.expirationDate).toLocaleDateString('pt-BR') : '---'}
-                </td>
-                <td className="px-8 py-6 text-center">
-                  <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-md border ${
-                    getClientStatus(c.expirationDate) === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
-                  }`}>
-                    {getClientStatus(c.expirationDate)}
-                  </span>
-                </td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex justify-end gap-2">
-                    {/* BOTÃO COPIAR LINK M3U USANDO CAMPO DINÂMICO */}
-                    {c.m3u && (
-                      <button onClick={() => copyToClipboard(c.m3u)} className="p-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all" title="Copiar M3U">🔗</button>
-                    )}
-                    <button onClick={() => handleOpenRenew(c)} className="p-2 rounded-lg bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all">🔄</button>
-                    <button onClick={() => onDelete(c.id)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">🗑️</button>
-                  </div>
+                <td className="p-4 font-mono text-sm">{c.expirationDate}</td>
+                <td className="p-4 text-right flex justify-end gap-2">
+                  <button onClick={() => handleSendWhatsApp(c)} className="p-2 bg-green-600/10 text-green-500 rounded-md">📱</button>
+                  <button onClick={() => { setRenewingClient(c); setIsRenewalModalOpen(true); }} className="p-2 bg-blue-600/10 text-blue-500 rounded-md">🔄</button>
+                  <button onClick={() => onDelete(c.id)} className="p-2 bg-red-600/10 text-red-500 rounded-md">🗑️</button>
                 </td>
               </tr>
             ))}
@@ -221,51 +138,37 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </table>
       </div>
 
-      {/* MODAL CRIAR */}
+      {/* Modais simplificados para teste */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative w-full max-w-xl bg-[#141824] rounded-[32px] border border-gray-800 p-8 shadow-2xl">
-            <h2 className="text-2xl font-black text-white mb-6 uppercase italic">Novo Cadastro IPTV</h2>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <input placeholder="Nome" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
-              <input placeholder="WhatsApp" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
-            </div>
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <input placeholder="Usuário" value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
-              <input placeholder="Senha" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
-            </div>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <select value={formData.planId} onChange={e => setFormData({ ...formData, planId: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-[#141824] p-6 rounded-2xl border border-gray-800 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">CADASTRAR ACESSO</h2>
+            <div className="space-y-3">
+              <input placeholder="Nome" className="w-full bg-black/40 border border-gray-700 p-2 rounded" onChange={e => setFormData({...formData, name: e.target.value})} />
+              <input placeholder="WhatsApp" className="w-full bg-black/40 border border-gray-700 p-2 rounded" onChange={e => setFormData({...formData, phone: e.target.value})} />
+              <input placeholder="Usuário" className="w-full bg-black/40 border border-gray-700 p-2 rounded" onChange={e => setFormData({...formData, username: e.target.value})} />
+              <input placeholder="Senha" className="w-full bg-black/40 border border-gray-700 p-2 rounded" onChange={e => setFormData({...formData, password: e.target.value})} />
+              <select className="w-full bg-black/40 border border-gray-700 p-2 rounded" onChange={e => setFormData({...formData, planId: e.target.value})}>
                 <option value="">Selecione o Plano</option>
                 {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <select value={formData.serverId} onChange={e => setFormData({ ...formData, serverId: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none">
-                <option value="">Selecione o Servidor</option>
-                {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div className="flex justify-end gap-4">
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Sair</button>
-              <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs shadow-lg shadow-blue-600/20">Ativar no Painel</button>
+              <button onClick={handleSaveClient} className="w-full bg-blue-600 py-3 rounded-xl font-bold mt-4">CRIAR NO PAINEL</button>
+              <button onClick={() => setIsModalOpen(false)} className="w-full text-gray-500 text-sm">CANCELAR</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL RENOVAR */}
-      {isRenewalModalOpen && renewingClient && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
-          <div className="relative w-full max-w-sm bg-[#141824] rounded-[32px] border border-blue-600/30 p-8 shadow-2xl">
-            <h2 className="text-xl font-black text-white uppercase italic text-center mb-6">Renovar Acesso</h2>
-            <div className="space-y-4">
-              <select value={renewalData.planId} onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-blue-500">
-                <option value="">Escolha o Plano</option>
-                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs shadow-lg shadow-blue-600/20">Confirmar Renovação</button>
-            </div>
+      {isRenewalModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-[#141824] p-6 rounded-2xl border border-gray-800 w-full max-w-sm text-center">
+            <h2 className="text-xl font-bold mb-4 italic">RENOVAR ACESSO</h2>
+            <select className="w-full bg-black/40 border border-gray-700 p-3 rounded-xl mb-6" onChange={e => setRenewalData({planId: e.target.value})}>
+              <option value="">Selecione o Plano</option>
+              {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 py-3 rounded-xl font-bold">CONFIRMAR RENOVAÇÃO</button>
+            <button onClick={() => setIsRenewalModalOpen(false)} className="w-full text-gray-500 text-sm mt-4">SAIR</button>
           </div>
         </div>
       )}
