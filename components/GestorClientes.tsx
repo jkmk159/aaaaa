@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Client, Server, Plan } from '../types';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../lib/supabase';
 
 /* ===============================
    FUNÇÃO EDGE FUNCTION IPTV
