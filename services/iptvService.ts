@@ -16,20 +16,22 @@ const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
     return data;
   } catch (error: any) {
     console.error("Erro na Edge Function:", error);
-    return { success: false, message: error.message || "Falha na conexão com o painel." };
+    return { success: false, message: "Falha na conexão segura com o painel." };
   }
 };
 
-export const createRemoteIptvUser = async (payload: any) => {
+// Ajustado para receber serverId dentro do payload
+export const createRemoteIptvUser = async (payload: { serverId: string; [key: string]: any }) => {
   return await callSecureIptvApi({
     action: 'create',
     ...payload
   });
 };
 
-export const renewRemoteIptvUser = async (username: string, days: number) => {
+export const renewRemoteIptvUser = async (serverId: string, username: string, days: number) => {
   return await callSecureIptvApi({
     action: 'renew',
+    serverId,
     username,
     days
   });
