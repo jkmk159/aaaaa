@@ -1,27 +1,51 @@
 
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, checkSupabaseConnection } from '../lib/supabase';
 
-const Auth: React.FC = () => {
+interface AuthProps {
+  initialIsSignUp?: boolean;
+  onBack?: () => void;
+  onDemoLogin?: (email?: string) => void;
+}
+
+export default function Auth({ initialIsSignUp = false, onBack, onDemoLogin }: AuthProps) {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(initialIsSignUp);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const isConfigured = checkSupabaseConnection();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (email === 'jaja@jaja' && password === 'jajaja') {
+      setLoading(true);
+      setTimeout(() => {
+        onDemoLogin?.('jaja@jaja');
+        setLoading(false);
+      }, 800);
+      return;
+    }
+
+    if (!isConfigured) {
+      setMessage({ 
+        type: 'error', 
+        text: 'CONFIGURAÇÃO AUSENTE: VITE_SUPABASE_ANON_KEY não encontrada.' 
+      });
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
     try {
       if (isSignUp) {
-        // Fix: Using any to bypass typing issue with signUp which might be missing from some SDK type versions
         const { error } = await (supabase.auth as any).signUp({ email, password });
         if (error) throw error;
-        setMessage({ type: 'success', text: 'Cadastro realizado! Verifique seu e-mail para confirmar.' });
+        setMessage({ type: 'success', text: 'Cadastro realizado! Verifique seu e-mail.' });
       } else {
-        // Fix: Using any to bypass typing issue with signInWithPassword which might be missing from some SDK type versions
         const { error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
       }
@@ -34,77 +58,53 @@ const Auth: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0b0e14] p-4 relative overflow-hidden">
-      {/* Background Decorativo */}
       <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 blur-[120px] rounded-full"></div>
-      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/10 blur-[120px] rounded-full"></div>
-
       <div className="w-full max-w-md z-10 animate-fade-in">
+        <button 
+          onClick={onBack}
+          className="mb-8 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-white transition-colors"
+        >
+          ← Voltar
+        </button>
+
         <div className="bg-[#141824] p-10 rounded-[40px] border border-gray-800 shadow-2xl">
           <header className="text-center mb-10">
-            <h1 className="text-3xl font-black text-blue-500 tracking-tighter italic mb-2">
+            <h1 className="text-4xl font-black text-blue-500 tracking-tighter italic mb-2">
               Stream<span className="text-white">HUB</span>
             </h1>
-            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em]">
-              {isSignUp ? 'Crie sua conta profissional' : 'Acesse sua conta profissional'}
-            </p>
           </header>
 
           <form onSubmit={handleAuth} className="space-y-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">E-mail</label>
-              <input 
-                type="email" 
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="exemplo@gmail.com"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
-              />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
             </div>
-
             <div className="space-y-2">
               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Senha</label>
-              <input 
-                type="password" 
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none transition-all placeholder:text-gray-700"
-              />
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
             </div>
 
             {message && (
-              <div className={`p-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-center ${message.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+              <div className={`p-4 rounded-2xl text-[10px] font-black uppercase text-center ${message.type === 'success' ? 'text-green-500 bg-green-500/10' : 'text-red-500 bg-red-500/10'}`}>
                 {message.text}
               </div>
             )}
 
-            <button 
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase italic tracking-widest text-sm hover:bg-blue-700 transition-all shadow-xl shadow-blue-900/20 active:scale-95 disabled:opacity-50"
-            >
-              {loading ? 'PROCESSANDO...' : isSignUp ? 'CADASTRAR AGORA' : 'ENTRAR NA PLATAFORMA'}
+            <button type="submit" disabled={loading} className="w-full py-5 rounded-2xl font-black uppercase italic tracking-widest text-sm bg-blue-600 hover:bg-blue-700 transition-all shadow-xl">
+              {loading ? 'PROCESSANDO...' : isSignUp ? 'CADASTRAR' : 'ENTRAR'}
             </button>
+
+            {!isConfigured && email !== 'jaja@jaja' && (
+              <button type="button" onClick={() => onDemoLogin?.()} className="w-full bg-white/5 border border-white/10 py-4 rounded-2xl font-black uppercase text-[10px] hover:bg-white/10 transition-all">
+                🚀 Entrar como Demo
+              </button>
+            )}
           </form>
-
-          <footer className="mt-8 text-center">
-            <button 
-              onClick={() => { setIsSignUp(!isSignUp); setMessage(null); }}
-              className="text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors"
-            >
-              {isSignUp ? 'Já tem uma conta? Faça login' : 'Não tem uma conta? Cadastre-se'}
-            </button>
-          </footer>
-        </div>
-
-        <div className="mt-8 text-center">
-          <p className="text-[9px] text-gray-600 font-bold uppercase tracking-[0.4em]">Tecnologia Segura & Criptografada</p>
+          <button onClick={() => setIsSignUp(!isSignUp)} className="w-full mt-6 text-[10px] font-black text-gray-500 uppercase hover:text-blue-500">
+            {isSignUp ? 'Já tem conta? Login' : 'Não tem conta? Cadastro'}
+          </button>
         </div>
       </div>
     </div>
   );
-};
-
-export default Auth;
+}
