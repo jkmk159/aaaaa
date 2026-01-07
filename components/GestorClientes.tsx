@@ -1,6 +1,9 @@
-
 import React, { useState } from 'react';
 import { Client, Server, Plan } from '../types';
+
+// Configurações da API IPTV (Substitua pela sua chave real)
+const IPTV_API_URL = 'https://jordantv.shop/api/create_user.php';
+const IPTV_API_KEY = '0d05ae3a98bceef41e468d7a0bbc3e9147c4082c2eabea5d9e0c596a1240ac07';
 
 interface Props {
   clients: Client[];
@@ -36,6 +39,24 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     manualDate: ''
   });
 
+  // Função Auxiliar para falar com a API IPTV
+  const callIptvApi = async (body: any) => {
+    try {
+      const response = await fetch(IPTV_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${IPTV_API_KEY}`
+        },
+        body: JSON.stringify(body)
+      });
+      return await response.json();
+    } catch (error) {
+      console.error("Erro na chamada da API:", error);
+      return { success: false, message: "Erro de conexão com o servidor IPTV." };
+    }
+  };
+
   const handleOpenCreate = () => {
     setEditingClient(null);
     setFormData({ name: '', username: '', password: '', phone: '', email: '', serverId: '', planId: '', expirationDate: '' });
@@ -49,7 +70,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       username: client.username, 
       password: client.password || '', 
       phone: client.phone, 
-      email: '', // Email não existia no tipo original, mas podemos tratar se necessário
+      email: '', 
       serverId: client.serverId, 
       planId: client.planId, 
       expirationDate: client.expirationDate 
@@ -63,64 +84,99 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
     setIsRenewalModalOpen(true);
   };
 
-  const handleSaveClient = () => {
-    if (!formData.name || !formData.serverId || !formData.planId) {
-      alert("Por favor, preencha os campos obrigatórios.");
+  const handleSaveClient = async () => {
+    if (!formData.name || !formData.serverId || !formData.planId || !formData.username || !formData.password) {
+      alert("Por favor, preencha os campos obrigatórios, incluindo login e senha.");
       return;
     }
 
+    const selectedPlan = plans.find(p => p.id === formData.planId);
+
     if (editingClient) {
-      // Modo Edição
+      // Nota: A sua documentação não mostra endpoint de "Update", apenas "Create". 
+      // Geralmente em IPTV, edição de senha/plano é feita no mesmo endpoint ou manualmente.
       const updatedClients = clients.map(c => {
         if (c.id === editingClient.id) {
-          return {
-            ...c,
-            ...formData,
-            status: getClientStatus(formData.expirationDate || c.expirationDate)
-          };
+          return { ...c, ...formData, status: getClientStatus(formData.expirationDate || c.expirationDate) };
         }
         return c;
       });
       setClients(updatedClients);
+      setIsModalOpen(false);
     } else {
-      // Modo Criação
-      let exp = formData.expirationDate;
-      if (!exp && formData.planId) {
-        const plan = plans.find(p => p.id === formData.planId);
-        exp = addDays(new Date(), plan?.months || 1);
-      }
-
-      const newClient: Client = {
-        id: Date.now().toString(),
-        name: formData.name,
+      // --- CRIAÇÃO NO PAINEL IPTV ---
+      const apiResult = await callIptvApi({
+        action: "create",
         username: formData.username,
         password: formData.password,
-        phone: formData.phone,
-        serverId: formData.serverId,
-        planId: formData.planId,
-        expirationDate: exp || new Date().toISOString().split('T')[0],
-        status: getClientStatus(exp || new Date().toISOString().split('T')[0])
-      };
-      setClients([...clients, newClient]);
-    }
+        plan: selectedPlan?.name.toLowerCase() || "starter", // Envia o nome do plano minúsculo
+        email: formData.email,
+        nome: formData.name
+      });
 
-    setIsModalOpen(false);
+      if (apiResult.success) {
+        let exp = formData.expirationDate;
+        if (!exp && formData.planId) {
+          exp = addDays(new Date(), selectedPlan?.months || 1);
+        }
+
+        const newClient: Client = {
+          id: apiResult.data?.cliente_id?.toString() || Date.now().toString(),
+          name: formData.name,
+          username: formData.username,
+          password: formData.password,
+          phone: formData.phone,
+          serverId: formData.serverId,
+          planId: formData.planId,
+          expirationDate: exp || new Date().toISOString().split('T')[0],
+          status: getClientStatus(exp || new Date().toISOString().split('T')[0])
+        };
+        setClients([...clients, newClient]);
+        setIsModalOpen(false);
+        alert("Cliente criado com sucesso no painel!");
+      } else {
+        alert("Erro no Painel IPTV: " + apiResult.message);
+      }
+    }
   };
 
-  const handleConfirmRenewal = () => {
+  const handleConfirmRenewal = async () => {
     if (!renewingClient) return;
-    
-    if (renewalData.manualDate) {
-      onRenew(renewingClient.id, '', renewalData.manualDate);
-    } else if (renewalData.planId) {
-      onRenew(renewingClient.id, renewalData.planId);
-    } else {
-      alert("Selecione um plano ou uma data manual.");
-      return;
-    }
 
-    setIsRenewalModalOpen(false);
-    setRenewingClient(null);
+    const selectedPlan = plans.find(p => p.id === renewalData.planId);
+    // Calcula os dias baseado no plano (ex: 1 mês = 30 dias)
+    const diasParaAdicionar = selectedPlan ? (selectedPlan.months * 30) : 30;
+
+    // --- RENOVAÇÃO NO PAINEL IPTV ---
+    const apiResult = await callIptvApi({
+      action: "renew",
+      username: renewingClient.username,
+      dias: diasParaAdicionar
+    });
+
+    if (apiResult.success) {
+      if (renewalData.manualDate) {
+        onRenew(renewingClient.id, '', renewalData.manualDate);
+      } else if (renewalData.planId) {
+        onRenew(renewingClient.id, renewalData.planId);
+      }
+      setIsRenewalModalOpen(false);
+      setRenewingClient(null);
+      alert("Assinatura renovada com sucesso!");
+    } else {
+      alert("Erro ao renovar no painel: " + apiResult.message);
+    }
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    const clientToDelete = clients.find(c => c.id === id);
+    if (!clientToDelete) return;
+
+    if (window.confirm(`Tem certeza que deseja excluir ${clientToDelete.name}?`)) {
+      // Nota: Como não há "action: delete" na sua imagem, 
+      // aqui ele apenas remove do seu sistema. 
+      onDelete(id);
+    }
   };
 
   const filteredClients = clients.filter(c => 
@@ -130,7 +186,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
 
   return (
     <div className="p-8 animate-fade-in max-w-[1400px] mx-auto">
-      {/* HEADER DA ABA */}
+      {/* HEADER */}
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-4xl font-black tracking-tight text-white">Clientes</h1>
@@ -144,7 +200,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </button>
       </div>
 
-      {/* BARRA DE BUSCA E FILTRO */}
+      {/* BUSCA */}
       <div className="flex gap-4 mb-6">
         <div className="flex-1 relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">🔍</span>
@@ -153,16 +209,12 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
             placeholder="pesquisar clientes..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm font-medium focus:border-blue-500 outline-none transition-all placeholder:text-gray-600"
+            className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm font-medium focus:border-blue-500 outline-none transition-all placeholder:text-gray-600 text-white"
           />
         </div>
-        <button className="bg-[#141824] border border-gray-800 px-6 rounded-xl flex items-center gap-2 text-gray-400 hover:text-white transition-all">
-          <span className="text-sm">⚙️</span>
-          <span className="text-sm font-bold">Filtro</span>
-        </button>
       </div>
 
-      {/* TABELA DE CLIENTES */}
+      {/* TABELA */}
       <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
         <table className="w-full text-left">
           <thead className="bg-black/20 border-b border-gray-800">
@@ -219,15 +271,9 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
                 </td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex justify-end gap-3">
-                    <button onClick={() => handleOpenRenew(c)} className="p-2.5 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Renovar">
-                      🔄
-                    </button>
-                    <button onClick={() => handleOpenEdit(c)} className="p-2.5 rounded-xl bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all shadow-sm" title="Editar">
-                      ✏️
-                    </button>
-                    <button onClick={() => onDelete(c.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" title="Excluir">
-                      🗑️
-                    </button>
+                    <button onClick={() => handleOpenRenew(c)} className="p-2.5 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Renovar">🔄</button>
+                    <button onClick={() => handleOpenEdit(c)} className="p-2.5 rounded-xl bg-gray-600/10 text-gray-400 hover:bg-gray-600 hover:text-white transition-all shadow-sm" title="Editar">✏️</button>
+                    <button onClick={() => handleDeleteClient(c.id)} className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm" title="Excluir">🗑️</button>
                   </div>
                 </td>
               </tr>
@@ -236,92 +282,53 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </table>
       </div>
 
-      {/* MODAL DE ADICIONAR/EDITAR CLIENTE */}
+      {/* MODAL ADICIONAR/EDITAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative w-full max-w-2xl bg-[#141824] rounded-[40px] border border-gray-800 shadow-2xl overflow-hidden animate-fade-in">
+          <div className="relative w-full max-w-2xl bg-[#141824] rounded-[40px] border border-gray-800 shadow-2xl overflow-hidden">
             <div className="p-10">
-              <div className="flex justify-between items-center mb-10">
-                <h2 className="text-2xl font-black text-white">{editingClient ? 'Editar Cliente' : 'Adicionar novo cliente'}</h2>
-                <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors text-2xl">×</button>
-              </div>
+              <h2 className="text-2xl font-black text-white mb-10">{editingClient ? 'Editar Cliente' : 'Adicionar no Painel IPTV'}</h2>
               <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nome Completo</label>
-                    <input 
-                      value={formData.name} 
-                      onChange={e => setFormData({ ...formData, name: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
+                    <input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Telefone</label>
-                    <input 
-                      value={formData.phone} 
-                      onChange={e => setFormData({ ...formData, phone: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
+                    <input value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none" />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Usuário (IPTV)</label>
-                    <input 
-                      value={formData.username} 
-                      onChange={e => setFormData({ ...formData, username: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
+                    <input value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Senha (IPTV)</label>
-                    <input 
-                      type="password"
-                      value={formData.password} 
-                      onChange={e => setFormData({ ...formData, password: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
+                    <input type="text" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none" />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Plano</label>
-                    <select 
-                      value={formData.planId} 
-                      onChange={e => setFormData({ ...formData, planId: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold appearance-none outline-none"
-                    >
+                    <select value={formData.planId} onChange={e => setFormData({ ...formData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none">
                       <option value="">Selecionar Plano</option>
-                      {plans.map(p => <option key={p.id} value={p.id}>{p.name} - R${p.price}</option>)}
+                      {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Servidor</label>
-                    <select 
-                      value={formData.serverId} 
-                      onChange={e => setFormData({ ...formData, serverId: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold appearance-none outline-none"
-                    >
+                    <select value={formData.serverId} onChange={e => setFormData({ ...formData, serverId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none">
                       <option value="">Selecionar Servidor</option>
                       {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Data de Vencimento (Manual)</label>
-                    <input 
-                      type="date"
-                      value={formData.expirationDate} 
-                      onChange={e => setFormData({ ...formData, expirationDate: e.target.value })} 
-                      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                    />
-                </div>
-                <div className="flex justify-end gap-6 pt-6 items-center">
-                  <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white font-bold transition-all">Cancelar</button>
-                  <button onClick={handleSaveClient} className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-blue-600/20 active:scale-95">
-                    {editingClient ? 'Salvar Alterações' : 'Adicionar Cliente'}
-                  </button>
+                <div className="flex justify-end gap-6 pt-6">
+                  <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold">Cancelar</button>
+                  <button onClick={handleSaveClient} className="bg-blue-600 px-10 py-4 rounded-2xl font-black text-white uppercase text-xs">Confirmar e Criar</button>
                 </div>
               </div>
             </div>
@@ -329,52 +336,26 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </div>
       )}
 
-      {/* MODAL DE RENOVAÇÃO */}
+      {/* MODAL RENOVAÇÃO */}
       {isRenewalModalOpen && renewingClient && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
-          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-blue-600/30 shadow-2xl overflow-hidden animate-fade-in">
-            <div className="p-10">
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">🔄</div>
-                <h2 className="text-xl font-black text-white uppercase tracking-tighter">Renovar Assinatura</h2>
-                <p className="text-gray-500 text-xs font-bold uppercase mt-1">{renewingClient.name}</p>
-              </div>
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Escolher Plano Pré-definido</label>
-                  <select 
-                    value={renewalData.planId} 
-                    onChange={e => setRenewalData({ ...renewalData, planId: e.target.value, manualDate: '' })} 
-                    className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold appearance-none outline-none focus:border-blue-500"
-                  >
-                    <option value="">Selecione um Plano</option>
-                    {plans.map(p => <option key={p.id} value={p.id}>{p.name} - R${p.price}</option>)}
-                  </select>
-                </div>
-                <div className="relative flex items-center justify-center py-2">
-                   <div className="h-px w-full bg-gray-800"></div>
-                   <span className="absolute bg-[#141824] px-4 text-[9px] font-black text-gray-600 uppercase">Ou selecione manual</span>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nova Data de Vencimento</label>
-                  <input 
-                    type="date"
-                    value={renewalData.manualDate} 
-                    onChange={e => setRenewalData({ ...renewalData, manualDate: e.target.value, planId: '' })} 
-                    className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-blue-500 outline-none" 
-                  />
-                </div>
-                <div className="flex flex-col gap-3 pt-4">
-                   <button 
-                     onClick={handleConfirmRenewal}
-                     className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-blue-600/20 active:scale-95"
-                   >
-                     Confirmar Renovação
-                   </button>
-                   <button onClick={() => setIsRenewalModalOpen(false)} className="text-gray-500 hover:text-white text-[10px] font-black uppercase tracking-widest">Cancelar</button>
-                </div>
-              </div>
+          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-blue-600/30 p-10">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">🔄</div>
+              <h2 className="text-xl font-black text-white uppercase">Renovar no Painel</h2>
+              <p className="text-gray-500 text-xs font-bold uppercase">{renewingClient.name}</p>
+            </div>
+            <div className="space-y-6">
+              <select 
+                value={renewalData.planId} 
+                onChange={e => setRenewalData({ ...renewalData, planId: e.target.value, manualDate: '' })} 
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500"
+              >
+                <option value="">Selecione o Plano de Renovação</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs">Confirmar Renovação</button>
             </div>
           </div>
         </div>
