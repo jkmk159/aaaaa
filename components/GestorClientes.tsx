@@ -1,6 +1,30 @@
 
 import React, { useState } from 'react';
 import { Client, Server, Plan } from '../types';
+import { supabase } from '@/lib/supabase';
+
+const criarUsuarioIPTV = async () => {
+  const { data, error } = await supabase.functions.invoke(
+    'create-iptv-user',
+    {
+      body: {
+        username: 'cliente123',
+        password: 'senha123',
+        plan: 'professional',
+        email: 'cliente@email.com',
+      },
+    }
+  );
+
+  if (error) {
+    console.error('Erro IPTV:', error);
+    alert(error.message);
+    return;
+  }
+
+  console.log('Usuário IPTV criado:', data);
+};
+
 
 interface Props {
   clients: Client[];
