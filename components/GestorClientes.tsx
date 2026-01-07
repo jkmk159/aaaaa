@@ -113,10 +113,18 @@ export default function GestorClientes({ clients, setClients, servers, plans, on
                   <input placeholder="Usuário" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none focus:border-blue-500" onChange={e => setFormData({...formData, username: e.target.value})} />
                   <input placeholder="Senha" type="password" className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none focus:border-blue-500" onChange={e => setFormData({...formData, password: e.target.value})} />
                 </div>
-                <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none" onChange={e => setFormData({...formData, serverId: e.target.value})} value={formData.serverId}>
-                  <option value="">Selecione o Servidor</option>
-                  {servers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <select 
+  className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none"
+  value={formData.serverId}
+  onChange={e => setFormData({...formData, serverId: e.target.value})}
+>
+  <option value="">Selecione o Servidor</option>
+  {servers.map(s => (
+    <option key={s.id} value={s.id}>
+      {s.name}
+    </option>
+  ))}
+</select>
                 <select className="w-full bg-black/40 border border-gray-700 p-4 rounded-2xl text-white outline-none" onChange={e => setFormData({...formData, planId: e.target.value})} value={formData.planId}>
                   <option value="">Selecione o Plano</option>
                   {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
