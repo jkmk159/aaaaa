@@ -5,26 +5,23 @@ import { supabase } from '../lib/supabase';
 /* ===============================
    FUNÇÃO EDGE FUNCTION IPTV
 ================================ */
-const criarUsuarioIPTV = async (data: {
-  username: string;
-  password: string;
-  plan: string;
-  email?: string;
-  nome?: string;
-  whatsapp?: string;
-}) => {
-  const { data: result, error } = await supabase.functions.invoke(
-    'create-iptv-user',
-    { body: data }
-  );
-
-  if (error) {
-    console.error('Erro IPTV:', error);
-    throw new Error(error.message);
+const { data, error } = await supabase.functions.invoke(
+  "create-iptv-user",
+  {
+    body: {
+      username: "cliente01",
+      password: "123456",
+      plan: "professional",
+    },
   }
+);
 
-  return result;
-};
+if (error) {
+  console.error("Erro IPTV:", error);
+} else {
+  console.log("Usuário criado no painel:", data);
+}
+
 
 /* ===============================
    PROPS
