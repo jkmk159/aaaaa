@@ -55,13 +55,14 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       return await response.json();
     } catch (error) {
       console.error("Erro na API:", error);
-      return { success: false, message: "Erro de conexão com o painel." };
+      return { success: false, message: "Erro de conexão." };
     }
   };
 
   const copyToClipboard = (text: string) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
-    alert("Copiado para a área de transferência!");
+    alert("Link M3U copiado!");
   };
 
   const handleSaveClient = async () => {
@@ -100,9 +101,9 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
           phone: formData.phone,
           serverId: formData.serverId,
           planId: formData.planId,
-          expirationDate: apiResult.data?.data_vencimento || "",
+          expirationDate: apiResult.data?.data_vencimento || new Date().toISOString(),
           status: getClientStatus(apiResult.data?.data_vencimento),
-          notes: apiResult.data?.credenciais?.url_m3u || "" // Armazena a URL M3U
+          email: apiResult.data?.credenciais?.url_m3u || "" // USANDO O CAMPO EMAIL PARA GUARDAR O M3U
         };
         setClients([...clients, newClient]);
         setIsModalOpen(false);
@@ -158,7 +159,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
           <h1 className="text-4xl font-black tracking-tight text-white uppercase italic">Gestão de <span className="text-blue-500">Clientes</span></h1>
           <p className="text-gray-500 font-medium mt-1 uppercase text-[10px] tracking-widest">Sincronizado via API</p>
         </div>
-        <button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-600/20">
+        <button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all">
           <span className="text-xl">+</span> Novo Cliente
         </button>
       </div>
@@ -166,7 +167,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
       <div className="mb-6 relative">
         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">🔍</span>
         <input type="text" placeholder="Buscar cliente..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm text-white focus:border-blue-500 outline-none" />
+          className="w-full bg-[#141824] border border-gray-800 rounded-xl py-4 pl-12 pr-4 text-sm text-white outline-none" />
       </div>
 
       <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
@@ -175,7 +176,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
             <tr>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Cliente</th>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Acesso</th>
-              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Vencimento</th>
+              <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500">Expiração</th>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-center">Status</th>
               <th className="px-8 py-5 text-[10px] font-black uppercase text-gray-500 text-right">Ações</th>
             </tr>
@@ -198,17 +199,16 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
                 </td>
                 <td className="px-8 py-6 text-center">
                   <span className={`text-[8px] font-black uppercase px-2 py-1 rounded-md border ${
-                    getClientStatus(c.expirationDate) === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                    'bg-red-500/10 text-red-500 border-red-500/20'
+                    getClientStatus(c.expirationDate) === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'
                   }`}>
                     {getClientStatus(c.expirationDate)}
                   </span>
                 </td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex justify-end gap-2">
-                    {/* BOTÃO COPIAR LINK M3U */}
-                    {c.notes && (
-                      <button onClick={() => copyToClipboard(c.notes!)} className="p-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all" title="Copiar Link M3U">🔗</button>
+                    {/* BOTÃO COPIAR LINK M3U (USANDO O CAMPO EMAIL) */}
+                    {c.email && c.email.includes('http') && (
+                      <button onClick={() => copyToClipboard(c.email!)} className="p-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all" title="Copiar M3U">🔗</button>
                     )}
                     <button onClick={() => handleOpenRenew(c)} className="p-2 rounded-lg bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all">🔄</button>
                     <button onClick={() => onDelete(c.id)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">🗑️</button>
@@ -220,14 +220,14 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         </table>
       </div>
 
-      {/* MODAIS (ESTRUTURA IGUAL AO ANTERIOR) */}
+      {/* MODAIS */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
           <div className="relative w-full max-w-xl bg-[#141824] rounded-[32px] border border-gray-800 p-8 shadow-2xl">
-            <h2 className="text-2xl font-black text-white mb-6 uppercase italic">Novo Cadastro IPTV</h2>
+            <h2 className="text-2xl font-black text-white mb-6 uppercase italic">Cadastro IPTV</h2>
             <div className="grid grid-cols-2 gap-4 mb-4">
-              <input placeholder="Nome" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none focus:border-blue-500" />
+              <input placeholder="Nome" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
               <input placeholder="WhatsApp" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="bg-black/40 border border-gray-700 rounded-xl p-3 text-white outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -245,7 +245,7 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
               </select>
             </div>
             <div className="flex justify-end gap-4">
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Cancelar</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-500 font-bold uppercase text-xs">Sair</button>
               <button onClick={handleSaveClient} className="bg-blue-600 px-8 py-3 rounded-xl font-black text-white uppercase text-xs">Criar no Painel</button>
             </div>
           </div>
@@ -256,13 +256,13 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setIsRenewalModalOpen(false)}></div>
           <div className="relative w-full max-w-sm bg-[#141824] rounded-[32px] border border-blue-600/30 p-8 shadow-2xl">
-            <h2 className="text-xl font-black text-white uppercase italic text-center mb-6">Renovar Assinatura</h2>
+            <h2 className="text-xl font-black text-white uppercase italic text-center mb-6">Renovar</h2>
             <div className="space-y-4">
-              <select value={renewalData.planId} onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-blue-500">
-                <option value="">Selecione o Plano</option>
+              <select value={renewalData.planId} onChange={e => setRenewalData({ ...renewalData, planId: e.target.value })} className="w-full bg-black/40 border border-gray-700 rounded-xl p-4 text-white outline-none">
+                <option value="">Escolha o Plano</option>
                 {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs">Confirmar Renovação</button>
+              <button onClick={handleConfirmRenewal} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-xs">Ativar no Painel</button>
             </div>
           </div>
         </div>
