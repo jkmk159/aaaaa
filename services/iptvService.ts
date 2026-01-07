@@ -7,10 +7,6 @@ interface IptvResponse {
   data?: any;
 }
 
-/**
- * Esta função chama a Edge Function que você criou no Supabase.
- * Isso esconde sua API KEY e evita erros de CORS.
- */
 const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
   try {
     const { data, error } = await supabase.functions.invoke('iptv-api', {
@@ -25,18 +21,16 @@ const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
   }
 };
 
-export const createRemoteIptvUser = async (serverId: string, payload: any) => {
+export const createRemoteIptvUser = async (payload: any) => {
   return await callSecureIptvApi({
     action: 'create',
-    serverId,
     ...payload
   });
 };
 
-export const renewRemoteIptvUser = async (serverId: string, username: string, days: number) => {
+export const renewRemoteIptvUser = async (username: string, days: number) => {
   return await callSecureIptvApi({
     action: 'renew',
-    serverId,
     username,
     days
   });
