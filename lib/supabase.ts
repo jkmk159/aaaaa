@@ -1,18 +1,35 @@
+
 import { createClient } from '@supabase/supabase-js';
 
-// No Vite, usamos import.meta.env para acessar as variáveis injetadas
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+// Helper robusto para capturar variáveis de ambiente
+const getEnvVar = (key: string): string => {
+  const value = process.env[key] || (import.meta as any).env?.[key] || "";
+  return value.trim();
+};
 
-// Inicializa o cliente com verificações extras
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
+const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
+
+// Log de diagnóstico
+if (!supabaseAnonKey || supabaseAnonKey === "no-key-provided") {
+  console.warn("AVISO: Chave do Supabase não detectada. Configure VITE_SUPABASE_ANON_KEY.");
+}
+
 export const supabase = createClient(
-  supabaseUrl,
-  supabaseAnonKey || "invalid-key" // Evita que o app quebre se a chave estiver vindo como undefined
+  supabaseUrl, 
+  supabaseAnonKey || "no-key-provided",
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    }
+  }
 );
 
-// Log informativo para você saber exatamente o que está acontecendo no console
-if (!supabaseAnonKey || supabaseAnonKey === "undefined" || supabaseAnonKey === "invalid-key") {
-  console.error("ERRO CRÍTICO: Chave Anon do Supabase não foi encontrada pelo navegador.");
-} else {
-  console.log("Supabase: Conectado com sucesso.");
+/**
+ * Verifica se as credenciais do Supabase estão configuradas no ambiente.
+ */
+export function checkSupabaseConnection(): boolean {
+  const key = getEnvVar('VITE_SUPABASE_ANON_KEY');
+  return !!key && key !== "no-key-provided" && key !== "undefined" && key !== "";
 }
