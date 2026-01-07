@@ -47,34 +47,27 @@ const App: React.FC = () => {
     }
   };
 
-  const syncServers = async (newServers: Server[]) => {
-  // 1. Atualiza a tela para o usuário ver o servidor na hora
-  setServers(newServers);
-  
-  // 2. Pega o servidor novo (que não tem ID longo de UUID)
-  const serverToSave = newServers.find(s => !s.id || s.id.length < 10);
-
-  if (serverToSave) {
+  // FUNÇÃO QUE ESTAVA FALTANDO OU COM NOME DIFERENTE
+  const deleteServer = async (id: string) => {
     try {
-      // Remove o ID temporário para o Supabase criar o oficial
-      const { id, ...dataToSave } = serverToSave;
-      
-      const { error, data } = await supabase
-        .from('servers')
-        .insert([dataToSave]) // Usamos insert para garantir nova criação
-        .select(); // Pede o ID real de volta
-
+      const { error } = await supabase.from('servers').delete().eq('id', id);
       if (error) throw error;
-      
-      // 3. Força uma atualização total para substituir o ID temporário pelo real do banco
-      await fetchData(); 
-      console.log("Servidor persistido com sucesso no banco!");
+      setServers(prev => prev.filter(s => s.id !== id));
     } catch (error) {
-      console.error("Erro ao salvar servidor:", error);
-      alert("Erro ao salvar no banco. Verifique sua conexão.");
+      console.error("Erro ao deletar servidor:", error);
+      alert("Erro ao remover do banco de dados.");
     }
-  }
-};
+  };
+
+  const syncServers = async (newServers: Server[]) => {
+    setServers(newServers);
+    const serverToSave = newServers.find(s => !s.id || s.id.length < 10);
+    if (serverToSave) {
+      const { id, ...dataToSave } = serverToSave;
+      const { error } = await supabase.from('servers').insert([dataToSave]);
+      if (!error) await fetchData();
+    }
+  };
 
   const addDuration = (date: Date, value: number, unit: 'months' | 'days'): string => {
     const d = new Date(date);
@@ -99,7 +92,11 @@ const App: React.FC = () => {
         {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
         
         {currentView === 'gestor-servidores' && (
-          <GestorServidores servers={servers} setServers={syncServers} onDelete={deleteServer} />
+          <GestorServidores 
+            servers={servers} 
+            setServers={syncServers} 
+            onDelete={deleteServer} 
+          />
         )}
 
         {currentView === 'gestor-clientes' && (
@@ -108,9 +105,9 @@ const App: React.FC = () => {
             setClients={async (newClients) => {
               setClients(newClients);
               const last = newClients[newClients.length - 1];
-              if (last) {
+              if (last && (!last.id || last.id.length < 10)) {
                 const { id, ...data } = last;
-                await supabase.from('clients').upsert([data]);
+                await supabase.from('clients').insert([data]);
                 fetchData();
               }
             }} 
@@ -126,7 +123,12 @@ const App: React.FC = () => {
           />
         )}
 
-        {currentView === 'gestor-planos' && <GestorPlanos plans={plans} setPlans={async (p) => { setPlans(p); await supabase.from('plans').upsert(p); }} />}
+        {currentView === 'gestor-planos' && (
+          <GestorPlanos plans={plans} setPlans={async (p) => { 
+            setPlans(p); 
+            await supabase.from('plans').upsert(p); 
+          }} />
+        )}
       </main>
     </div>
   );
