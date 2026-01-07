@@ -14,7 +14,7 @@ async function criarUsuarioIPTV(data: {
   whatsapp?: string;
 }) {
   const { data: result, error } = await supabase.functions.invoke(
-    'create-iptv-user',
+    'iptv-create-user',
     {
       body: data,
     }
