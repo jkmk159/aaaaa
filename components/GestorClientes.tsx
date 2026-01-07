@@ -23,26 +23,36 @@ const GestorClientes: React.FC<Props> = ({ clients, setClients, servers, plans, 
   const [renewalData, setRenewalData] = useState({ planId: '' });
 
   // Função de chamada seguindo estritamente a documentação (image_98bd64.png)
-  const callIptvApi = async (data: any) => {
-    try {
-      const response = await fetch(IPTV_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${IPTV_API_KEY}` // Conforme imagem de autenticação
-        },
-        body: JSON.stringify(data)
-      });
+ const callIptvApi = async (data: any) => {
+  try {
+    const response = await fetch(IPTV_API_URL, {
+      method: 'POST',
+      // Removendo headers extras que podem causar bloqueio de CORS pré-flight
+      headers: {
+        'Content-Type': 'text/plain', // Técnica para evitar pre-flight CORS em alguns servidores
+        'Authorization': `Bearer ${IPTV_API_KEY.trim()}`
+      },
+      // Enviando como string pura para o PHP processar
+      body: JSON.stringify({
+        ...data,
+        api_key: IPTV_API_KEY.trim() // Reforço: enviando a chave também dentro do corpo
+      })
+    });
 
-      // Se der 404 aqui, o servidor não está aceitando JSON ou o arquivo sumiu
-      if (response.status === 404) throw new Error("Endpoint não encontrado no servidor.");
-      
-      return await response.json();
-    } catch (error: any) {
-      console.error("Erro na API:", error);
-      return { success: false, message: error.message || "Erro de conexão." };
+    // Se o servidor retornar erro, vamos ler o que ele diz
+    const result = await response.json();
+    
+    if (!response.ok) {
+        throw new Error(result.message || `Erro HTTP: ${response.status}`);
     }
-  };
+
+    return result;
+  } catch (error: any) {
+    console.error("Detalhes do erro:", error);
+    // Se ainda der 404, o problema é bloqueio de domínio (CORS)
+    return { success: false, message: "O servidor bloqueou a requisição (CORS) ou dados inválidos." };
+  }
+};
 
   const handleSendWhatsApp = (client: any) => {
     const texto = `*DADOS DE ACESSO IPTV*%0A%0A*Usuário:* ${client.username}%0A*Senha:* ${client.password}%0A*Vencimento:* ${client.expirationDate}%0A*Link M3U:* ${client.m3u || 'Solicite ao suporte'}`;
