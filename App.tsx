@@ -47,10 +47,30 @@ const App: React.FC = () => {
     }
   };
 
-  const syncServers = async (newServers: Server[]) => {
-    setServers(newServers);
-    await supabase.from('servers').upsert(newServers);
-  };
+  // Substitua no App.tsx
+const syncServers = async (newServers: Server[]) => {
+  setServers(newServers);
+  
+  // Pegamos o último servidor adicionado (o mais novo)
+  const lastServer = newServers[newServers.length - 1];
+  
+  if (lastServer) {
+    try {
+      // Enviamos para o Supabase
+      const { error } = await supabase
+        .from('servers')
+        .upsert([lastServer]);
+
+      if (error) throw error;
+      
+      // Recarregamos para garantir que temos o ID do banco
+      fetchData(); 
+    } catch (error) {
+      console.error("Erro ao salvar servidor:", error);
+      alert("Erro ao salvar no banco de dados.");
+    }
+  }
+};
 
   const deleteServer = async (id: string) => {
     const { error } = await supabase.from('servers').delete().eq('id', id);
