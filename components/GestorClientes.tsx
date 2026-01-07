@@ -3,25 +3,29 @@ import { Client, Server, Plan } from '../types';
 import { supabase } from '../lib/supabase';
 
 /* ===============================
-   FUNÇÃO EDGE FUNCTION IPTV
+   FUNÇÃO IPTV (EDGE FUNCTION)
 ================================ */
-const { data, error } = await supabase.functions.invoke(
-  "create-iptv-user",
-  {
-    body: {
-      username: "cliente01",
-      password: "123456",
-      plan: "professional",
-    },
+async function criarUsuarioIPTV(data: {
+  username: string;
+  password: string;
+  plan: string;
+  email?: string;
+  nome?: string;
+  whatsapp?: string;
+}) {
+  const { data: result, error } = await supabase.functions.invoke(
+    'create-iptv-user',
+    {
+      body: data,
+    }
+  );
+
+  if (error) {
+    throw new Error(error.message);
   }
-);
 
-if (error) {
-  console.error("Erro IPTV:", error);
-} else {
-  console.log("Usuário criado no painel:", data);
+  return result;
 }
-
 
 /* ===============================
    PROPS
@@ -51,9 +55,7 @@ const GestorClientes: React.FC<Props> = ({
   addDays,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [renewingClient, setRenewingClient] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const [formData, setFormData] = useState({
@@ -67,39 +69,16 @@ const GestorClientes: React.FC<Props> = ({
     expirationDate: '',
   });
 
-  const [renewalData, setRenewalData] = useState({
-    planId: '',
-    manualDate: '',
-  });
-
   /* ===============================
      SALVAR CLIENTE
   ================================ */
   const handleSaveClient = async () => {
-    if (!formData.name || !formData.serverId || !formData.planId) {
+    if (!formData.name || !formData.username || !formData.password || !formData.planId) {
       alert('Preencha os campos obrigatórios.');
       return;
     }
 
-    // EDITAR CLIENTE (LOCAL)
-    if (editingClient) {
-      const updated = clients.map(c =>
-        c.id === editingClient.id
-          ? {
-              ...c,
-              ...formData,
-              status: getClientStatus(
-                formData.expirationDate || c.expirationDate
-              ),
-            }
-          : c
-      );
-      setClients(updated);
-      setIsModalOpen(false);
-      return;
-    }
-
-    // 🔥 CRIAR CLIENTE (IPTV + GESTOR)
+    // 🔥 CRIA NO PAINEL IPTV
     try {
       await criarUsuarioIPTV({
         username: formData.username,
@@ -109,30 +88,33 @@ const GestorClientes: React.FC<Props> = ({
         nome: formData.name,
         whatsapp: formData.phone,
       });
-
-      let exp = formData.expirationDate;
-      if (!exp) {
-        const plan = plans.find(p => p.id === formData.planId);
-        exp = addDays(new Date(), plan?.durationValue || 1);
-      }
-
-      const newClient: Client = {
-        id: Date.now().toString(),
-        name: formData.name,
-        username: formData.username,
-        password: formData.password,
-        phone: formData.phone,
-        serverId: formData.serverId,
-        planId: formData.planId,
-        expirationDate: exp!,
-        status: getClientStatus(exp!),
-      };
-
-      setClients([...clients, newClient]);
-      setIsModalOpen(false);
     } catch (err: any) {
-      alert(`Erro ao criar cliente no painel IPTV: ${err.message}`);
+      alert(`Erro ao criar no painel IPTV: ${err.message}`);
+      return;
     }
+
+    // 📆 DATA DE EXPIRAÇÃO
+    let exp = formData.expirationDate;
+    if (!exp) {
+      const plan = plans.find(p => p.id === formData.planId);
+      exp = addDays(new Date(), plan?.durationValue || 1);
+    }
+
+    // 💾 SALVA NO GESTOR (LOCAL)
+    const newClient: Client = {
+      id: Date.now().toString(),
+      name: formData.name,
+      username: formData.username,
+      password: formData.password,
+      phone: formData.phone,
+      serverId: formData.serverId,
+      planId: formData.planId,
+      expirationDate: exp!,
+      status: getClientStatus(exp!),
+    };
+
+    setClients([...clients, newClient]);
+    setIsModalOpen(false);
   };
 
   /* ===============================
@@ -199,7 +181,7 @@ const GestorClientes: React.FC<Props> = ({
                 {new Date(c.expirationDate).toLocaleDateString('pt-BR')}
               </td>
               <td className="p-4">{getClientStatus(c.expirationDate)}</td>
-              <td className="p-4 flex gap-2 justify-center">
+              <td className="p-4 flex justify-center">
                 <button
                   onClick={() => onDelete(c.id)}
                   className="text-red-500"
@@ -242,21 +224,6 @@ const GestorClientes: React.FC<Props> = ({
               {plans.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="w-full mb-6 p-3 bg-black/40"
-              value={formData.serverId}
-              onChange={e =>
-                setFormData({ ...formData, serverId: e.target.value })
-              }
-            >
-              <option value="">Servidor</option>
-              {servers.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
                 </option>
               ))}
             </select>
