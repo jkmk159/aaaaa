@@ -3,7 +3,9 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  // Use a type assertion to allow calling cwd() on process if it's incorrectly typed in the environment
+  const root = typeof process !== 'undefined' && typeof (process as any).cwd === 'function' ? (process as any).cwd() : '.';
+  const env = loadEnv(mode, root, '');
   
   return {
     plugins: [react()],
