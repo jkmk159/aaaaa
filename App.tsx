@@ -20,17 +20,14 @@ import GestorCalendario from './components/GestorCalendario';
 import GestorPlanos from './components/GestorPlanos';
 import GestorTemplateAI from './components/GestorTemplateAI';
 import Auth from './components/Auth';
-// import LandingPage from './components/LandingPage';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [clients, setClients] = useState<Client[]>([]);
-  const [servers, setServers] = useState<Server[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isPro, setIsPro] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [showAuth, setShowAuth] = useState(false);
 
   const getClientStatus = (dateStr: string): 'active' | 'expired' | 'near_expiry' => {
     const exp = new Date(dateStr + 'T00:00:00');
@@ -184,8 +181,14 @@ const App: React.FC = () => {
   };
 
   if (loading) return null;
-  if (!session && !showAuth) return <LandingPage onLogin={() => setShowAuth(true)} onSignup={() => setShowAuth(true)} />;
-  if (!session && showAuth) return <Auth onBack={() => setShowAuth(false)} onDemoLogin={(email?: string) => setSession({ user: { id: 'demo-user-id', email: email || 'demo@demo.com' } })} />;
+
+  if (!session) {
+    return (
+      <Auth 
+        onDemoLogin={(email?: string) => setSession({ user: { id: 'demo-user-id', email: email || 'demo@demo.com' } })} 
+      />
+    );
+  }
 
   return (
     <div className="flex bg-[#0b0e14] text-white min-h-screen">
