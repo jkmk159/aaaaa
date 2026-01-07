@@ -47,36 +47,34 @@ const App: React.FC = () => {
     }
   };
 
-  // Substitua no App.tsx
-const syncServers = async (newServers: Server[]) => {
+  const syncServers = async (newServers: Server[]) => {
+  // 1. Atualiza a tela para o usuário ver o servidor na hora
   setServers(newServers);
   
-  // Pegamos o último servidor adicionado (o mais novo)
-  const lastServer = newServers[newServers.length - 1];
-  
-  if (lastServer) {
+  // 2. Pega o servidor novo (que não tem ID longo de UUID)
+  const serverToSave = newServers.find(s => !s.id || s.id.length < 10);
+
+  if (serverToSave) {
     try {
-      // Enviamos para o Supabase
-      const { error } = await supabase
+      // Remove o ID temporário para o Supabase criar o oficial
+      const { id, ...dataToSave } = serverToSave;
+      
+      const { error, data } = await supabase
         .from('servers')
-        .upsert([lastServer]);
+        .insert([dataToSave]) // Usamos insert para garantir nova criação
+        .select(); // Pede o ID real de volta
 
       if (error) throw error;
       
-      // Recarregamos para garantir que temos o ID do banco
-      fetchData(); 
+      // 3. Força uma atualização total para substituir o ID temporário pelo real do banco
+      await fetchData(); 
+      console.log("Servidor persistido com sucesso no banco!");
     } catch (error) {
       console.error("Erro ao salvar servidor:", error);
-      alert("Erro ao salvar no banco de dados.");
+      alert("Erro ao salvar no banco. Verifique sua conexão.");
     }
   }
 };
-
-  const deleteServer = async (id: string) => {
-    const { error } = await supabase.from('servers').delete().eq('id', id);
-    if (!error) setServers(servers.filter(s => s.id !== id));
-    else alert("Erro ao deletar servidor do banco.");
-  };
 
   const addDuration = (date: Date, value: number, unit: 'months' | 'days'): string => {
     const d = new Date(date);
