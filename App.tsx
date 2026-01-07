@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Client, Server, Plan, ViewType } from './types';
 import { supabase } from './lib/supabase';
@@ -26,189 +25,124 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [clients, setClients] = useState<Client[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [servers, setServers] = useState<Server[]>([]);
   const [isPro, setIsPro] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const getClientStatus = (dateStr: string): 'active' | 'expired' | 'near_expiry' => {
-    const exp = new Date(dateStr + 'T00:00:00');
-    const now = new Date();
-    now.setHours(0,0,0,0);
-    const diff = exp.getTime() - now.getTime();
-    const days = diff / (1000 * 60 * 60 * 24);
-    if (days < 0) return 'expired';
-    if (days <= 5) return 'near_expiry';
-    return 'active';
-  };
-
-  const addDuration = (date: Date, value: number, unit: 'months' | 'days'): string => {
-    const d = new Date(date);
-    if (unit === 'months') {
-      d.setMonth(d.getMonth() + value);
-    } else {
-      d.setDate(d.getDate() + value);
-    }
-    return d.toISOString().split('T')[0];
-  };
-
-  const fetchData = async (userId: string) => {
-    if (userId === 'demo-user-id') {
-      setClients([{ id: '1', name: 'João Silva', username: 'joao123', phone: '11999999999', serverId: 'fixed-panel', planId: '1', expirationDate: '2025-12-31', status: 'active' }]);
-      setPlans([{ id: '1', name: 'Mensal', price: 35, durationValue: 1, durationUnit: 'months' }]);
-      setIsPro(true);
-      return;
-    }
-
-    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    setIsPro(profile?.subscription_status === 'active');
-
-    const { data: clientsData } = await supabase.from('clients').select('*');
-    if (clientsData) setClients(clientsData.map(c => ({
-      ...c,
-      expirationDate: c.expiration_date,
-      serverId: c.server_id,
-      planId: c.plan_id,
-      status: getClientStatus(c.expiration_date)
-    })));
-
-    const { data: plansData } = await supabase.from('plans').select('*');
-    if (plansData) setPlans(plansData);
-  };
-
   useEffect(() => {
-    // FIX: Cast supabase.auth to any to bypass typing inconsistencies in specific Supabase SDK environments for getSession.
-    (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchData(session.user.id);
+      if (session) fetchData();
       setLoading(false);
     });
 
-    // FIX: Cast supabase.auth to any to bypass typing inconsistencies in specific Supabase SDK environments for onAuthStateChange.
-    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchData(session.user.id);
+      if (session) fetchData();
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleSetClients = async (newClientsList: Client[]) => {
-    const userId = session?.user?.id;
-    if (!userId) return;
+  const fetchData = async () => {
+    try {
+      const [clientsRes, plansRes, serversRes] = await Promise.all([
+        supabase.from('clients').select('*'),
+        supabase.from('plans').select('*'),
+        supabase.from('servers').select('*')
+      ]);
 
-    const newlyAdded = newClientsList.find(nc => nc.id.startsWith('temp-'));
-
-    if (newlyAdded && userId !== 'demo-user-id') {
-      const plan = plans.find(p => p.id === newlyAdded.planId);
-      
-      try {
-        const remoteResponse = await createRemoteIptvUser({
-          username: newlyAdded.username,
-          password: newlyAdded.password,
-          plan: plan?.name.toLowerCase() || 'starter',
-          nome: newlyAdded.name,
-          whatsapp: newlyAdded.phone
-        });
-
-        if (remoteResponse.success) {
-          const creds = remoteResponse.data?.credenciais;
-          if (creds) {
-            newlyAdded.username = creds.usuario || newlyAdded.username;
-            newlyAdded.password = creds.senha || newlyAdded.password;
-            newlyAdded.url_m3u = creds.url_m3u;
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      }
-
-      const { data: savedClient, error } = await supabase.from('clients').insert([{
-        name: newlyAdded.name,
-        username: newlyAdded.username,
-        password: newlyAdded.password,
-        phone: newlyAdded.phone,
-        server_id: 'fixed-panel',
-        plan_id: newlyAdded.planId,
-        expiration_date: newlyAdded.expirationDate,
-        user_id: userId
-      }]).select().single();
-
-      if (!error && savedClient) {
-        const updatedList = newClientsList.map(c => c.id === newlyAdded.id ? {
-          ...c, 
-          id: savedClient.id,
-          status: getClientStatus(savedClient.expiration_date)
-        } : c);
-        setClients(updatedList);
-        return;
-      }
+      if (clientsRes.data) setClients(clientsRes.data);
+      if (plansRes.data) setPlans(plansRes.data);
+      if (serversRes.data) setServers(serversRes.data);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
     }
+  };
 
-    setClients(newClientsList);
+  const handleSetClients = async (newClients: Client[]) => {
+    setClients(newClients);
+    const lastClient = newClients[newClients.length - 1];
+    if (lastClient) {
+      // Removemos o ID manual para deixar o Supabase gerar o UUID e evitar erro 409
+      const { id, ...clientData } = lastClient;
+      await supabase.from('clients').upsert([clientData]);
+      fetchData(); // Recarrega para pegar o ID oficial do banco
+    }
+  };
+
+  const syncServers = async (newServers: Server[]) => {
+    setServers(newServers);
+    await supabase.from('servers').upsert(newServers);
+  };
+
+  const syncPlans = async (newPlans: Plan[]) => {
+    setPlans(newPlans);
+    await supabase.from('plans').upsert(newPlans);
+  };
+
+  const addDuration = (date: Date, value: number, unit: 'months' | 'days'): string => {
+    const d = new Date(date);
+    if (unit === 'months') d.setMonth(d.getMonth() + value);
+    else d.setDate(d.getDate() + value);
+    return d.toISOString();
+  };
+
+  const getClientStatus = (date: string) => {
+    const diff = new Date(date).getTime() - new Date().getTime();
+    const days = diff / (1000 * 60 * 60 * 24);
+    if (days < 0) return 'expired';
+    if (days < 5) return 'near_expiry';
+    return 'active';
   };
 
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
     const client = clients.find(c => c.id === clientId);
+    const plan = plans.find(p => p.id === planId);
     if (!client) return;
 
-    let newExp = manualDate;
-    let daysToAdd = 30;
-
-    const plan = plans.find(p => p.id === (planId || client.planId));
-    if (!manualDate && plan) {
-      daysToAdd = plan.durationUnit === 'months' ? plan.durationValue * 30 : plan.durationValue;
-      const baseDate = new Date(client.expirationDate + 'T00:00:00') < new Date() ? new Date() : new Date(client.expirationDate + 'T00:00:00');
-      newExp = addDuration(baseDate, plan.durationValue, plan.durationUnit);
-    }
+    const newDate = manualDate || addDuration(new Date(client.expirationDate), plan?.durationValue || 1, plan?.durationUnit || 'months');
     
-    const userId = session?.user.id;
-    if (userId && userId !== 'demo-user-id') {
-      try {
-        const remoteRes = await renewRemoteIptvUser(client.username, daysToAdd);
-        if (remoteRes.success) alert("✅ Renovação remota concluída!");
-
-        await supabase.from('clients').update({ 
-          expiration_date: newExp, 
-          plan_id: planId || client.planId 
-        }).eq('id', clientId);
-        
-        fetchData(userId);
-      } catch (err) {
-        alert("❌ Erro ao renovar.");
-      }
-    } else {
-      const updated = clients.map(c => c.id === clientId ? {...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!)} : c);
-      setClients(updated);
-    }
+    await supabase.from('clients').update({ 
+      expirationDate: newDate,
+      planId: planId 
+    }).eq('id', clientId);
+    
+    fetchData();
   };
 
   if (loading) return null;
-
-  if (!session) {
-    return (
-      <Auth 
-        onDemoLogin={(email?: string) => setSession({ user: { id: 'demo-user-id', email: email || 'demo@demo.com' } })} 
-      />
-    );
-  }
+  if (!session) return <Auth onDemoLogin={() => setSession({ user: { email: 'demo@iptv.com' } } as any)} />;
 
   return (
-    <div className="flex bg-[#0b0e14] text-white min-h-screen">
-      <Sidebar currentView={currentView} onNavigate={setCurrentView} userEmail={session.user.email} isPro={isPro} />
-      <main className="flex-1 overflow-y-auto custom-scrollbar h-screen">
+    <div className="flex min-h-screen bg-[#0b0e14] text-gray-100">
+      <Sidebar currentView={currentView} onNavigate={setCurrentView} userEmail={session.user.email} />
+      <main className="flex-1 min-h-screen overflow-y-auto">
         {currentView === 'dashboard' && <Dashboard onNavigate={setCurrentView} />}
-        {currentView === 'football' && <FootballBanners />}
-        {currentView === 'movie' && <MovieBanners />}
-        {currentView === 'series' && <SeriesBanners />}
-        {currentView === 'logo' && <LogoGenerator />}
-        {currentView === 'editor' && <AdEditor />}
-        {currentView === 'ad-analyzer' && <AdAnalyzer />}
-        {currentView === 'sales-copy' && <SalesCopy />}
-        {currentView === 'pricing' && <Pricing userEmail={session.user.email} isPro={isPro} />}
-        {currentView === 'gestor-dashboard' && <GestorDashboard clients={clients} servers={[]} onNavigate={setCurrentView} onRenew={renewClient} getClientStatus={getClientStatus} />}
-        {currentView === 'gestor-servidores' && <div className="p-8 text-center py-40 animate-fade-in"><div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-6">🖥️</div><h2 className="text-2xl font-black italic uppercase tracking-tighter">API FIXA <span className="text-blue-500">CONFIGURADA</span></h2></div>}
-        {currentView === 'gestor-clientes' && <GestorClientes clients={clients} setClients={handleSetClients} servers={[]} plans={plans} onRenew={renewClient} onDelete={(id) => setClients(clients.filter(c => c.id !== id))} getClientStatus={getClientStatus} addDays={addDuration} />}
-        {currentView === 'gestor-calendario' && <GestorCalendario clients={clients} servers={[]} onNavigate={setCurrentView} />}
-        {currentView === 'gestor-planos' && <GestorPlanos plans={plans} setPlans={setPlans} />}
+        {currentView === 'gestor-dashboard' && <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView} onRenew={renewClient} getClientStatus={getClientStatus} />}
+        
+        {/* CORREÇÃO: Renderiza o componente real de servidores em vez de texto fixo */}
+        {currentView === 'gestor-servidores' && <GestorServidores servers={servers} setServers={syncServers} />}
+        
+        {/* CORREÇÃO: Agora passa a lista de servers real */}
+        {currentView === 'gestor-clientes' && (
+          <GestorClientes 
+            clients={clients} 
+            setClients={handleSetClients} 
+            servers={servers} 
+            plans={plans} 
+            onRenew={renewClient} 
+            onDelete={async (id) => {
+              await supabase.from('clients').delete().eq('id', id);
+              setClients(clients.filter(c => c.id !== id));
+            }} 
+            getClientStatus={getClientStatus} 
+            addDays={addDuration} 
+          />
+        )}
+        
+        {currentView === 'gestor-planos' && <GestorPlanos plans={plans} setPlans={syncPlans} />}
+        {currentView === 'gestor-calendario' && <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView} />}
         {currentView === 'gestor-template-ai' && <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />}
       </main>
     </div>
