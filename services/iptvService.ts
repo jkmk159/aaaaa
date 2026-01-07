@@ -1,4 +1,3 @@
-
 import { supabase } from '../lib/supabase';
 
 interface IptvResponse {
@@ -17,7 +16,7 @@ const callSecureIptvApi = async (body: any): Promise<IptvResponse> => {
     return data;
   } catch (error: any) {
     console.error("Erro na Edge Function:", error);
-    return { success: false, message: "Falha na conexão segura com o painel." };
+    return { success: false, message: error.message || "Falha na conexão com o painel." };
   }
 };
 
