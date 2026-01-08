@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plan } from '../types';
 
@@ -194,7 +193,8 @@ const GestorPlanos: React.FC<Props> = ({ plans, setPlans }) => {
               const isEditing = editingId === p.id;
               const currentPlan = isEditing ? editBuffer! : p;
               
-              const durationVal = currentPlan.durationValue || currentPlan.months || 0;
+              // Fix: Access durationValue directly instead of non-existent months property
+              const durationVal = currentPlan.durationValue || 0;
               const durationUnit = currentPlan.durationUnit || 'months';
 
               return (
