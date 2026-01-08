@@ -110,6 +110,7 @@ const App: React.FC = () => {
           phone: c.phone,
           serverId: c.server_id, 
           planId: c.plan_id, 
+          expiration_date: c.expiration_date, 
           expirationDate: c.expiration_date, 
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
@@ -144,6 +145,7 @@ const App: React.FC = () => {
     let finalClient = { ...client };
     const isNew = !clients.find(c => c.id === client.id);
 
+    // Se for um novo cliente, chama a API do servidor IPTV
     if (isNew && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === client.serverId);
       const plan = plans.find(p => p.id === client.planId);
@@ -156,12 +158,13 @@ const App: React.FC = () => {
           whatsapp: client.phone
         });
         
+        // Mantém os dados manuais se o usuário preencheu o formulário
         if (res.success && res.data?.credenciais) {
           const creds = res.data.credenciais;
-          // AJUSTE CRÍTICO: Só usa o retorno da API se o usuário não tiver digitado nada.
-          // Isso evita que o "AVJSAVNVNHU" vire "user_..." se a API retornar um lixo.
+          // Só sobrescreve se o campo estiver vazio
           if (!finalClient.username) finalClient.username = creds.usuario;
           if (!finalClient.password) finalClient.password = creds.senha;
+          // O link da API fica guardado mas priorizaremos o dinâmico na UI
           finalClient.url_m3u = creds.url_m3u;
         }
       }
@@ -240,9 +243,6 @@ const App: React.FC = () => {
       setClients(clients.map(c => c.id === clientId ? { ...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!) } : c));
     }
   };
-
-  if (authLoading) return <div className="h-screen flex items-center justify-center bg-[#0b0e14]"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
-  if (!session) return <Auth initialIsSignUp={currentView === 'signup'} onDemoLogin={handleDemoLogin} />;
 
   const renderContent = () => {
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
