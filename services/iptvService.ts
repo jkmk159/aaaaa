@@ -1,16 +1,26 @@
 
 /**
  * SERVIÇO DE INTEGRAÇÃO IPTV (SaaS - MULTI-PAINEL)
+ * Compatível com o endpoint: https://jordantv.shop/api/create_user.php
  */
 
 interface IptvResponse {
   success: boolean;
   message: string;
-  data?: any;
+  data?: {
+    credenciais?: {
+      usuario: string;
+      senha: string;
+      url_m3u: string;
+      servidor: string;
+      porta: number;
+    };
+    nova_data_vencimento?: string;
+  };
 }
 
 /**
- * Cria um novo usuário no painel remoto vinculado ao servidor selecionado
+ * Cria um novo usuário no painel remoto
  */
 export const createRemoteIptvUser = async (baseUrl: string, apiKey: string, payload: {
   username: string;
@@ -34,18 +44,19 @@ export const createRemoteIptvUser = async (baseUrl: string, apiKey: string, payl
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP Error: ${response.status}`);
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
     }
 
     return await response.json();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao criar usuário remoto:", error);
-    return { success: false, message: "Erro de conexão com o servidor IPTV. Verifique a URL e API Key." };
+    return { success: false, message: error.message || "Erro de conexão com o servidor IPTV." };
   }
 };
 
 /**
- * Renova um usuário no painel remoto enviando a quantidade de dias
+ * Renova um usuário no painel remoto
  */
 export const renewRemoteIptvUser = async (baseUrl: string, apiKey: string, username: string, days: number): Promise<IptvResponse> => {
   try {
@@ -63,36 +74,12 @@ export const renewRemoteIptvUser = async (baseUrl: string, apiKey: string, usern
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP Error: ${response.status}`);
+      throw new Error(`Erro HTTP: ${response.status}`);
     }
 
     return await response.json();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro ao renovar usuário remoto:", error);
-    return { success: false, message: "Erro de conexão ao renovar no painel." };
-  }
-};
-
-/**
- * Busca informações de um usuário no painel remoto para sincronização
- */
-export const getRemoteIptvUser = async (baseUrl: string, apiKey: string, username: string): Promise<IptvResponse> => {
-  try {
-    const response = await fetch(baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        action: "get",
-        username
-      })
-    });
-
-    return await response.json();
-  } catch (error) {
-    console.error("Erro ao buscar usuário remoto:", error);
-    return { success: false, message: "Erro ao consultar painel IPTV." };
+    return { success: false, message: "Erro ao processar renovação no painel remoto." };
   }
 };
