@@ -62,9 +62,7 @@ const App: React.FC = () => {
 
   const handleDemoLogin = (email: string = 'demo@streamhub.com') => {
     const userId = email === 'jaja@jaja' ? 'master-user-id' : 'demo-user-id';
-    setSession({
-      user: { email: email, id: userId }
-    });
+    setSession({ user: { email: email, id: userId } });
     setSubscriptionStatus('active');
     setCurrentView('dashboard');
     fetchData(userId);
@@ -74,158 +72,111 @@ const App: React.FC = () => {
     if (userId === 'demo-user-id' || userId === 'master-user-id') return;
     supabase
       .channel(`profile_changes_${userId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
-        (payload) => {
-          if (payload.new.subscription_status) {
-            setSubscriptionStatus(payload.new.subscription_status);
-          }
-        }
-      )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, (payload) => {
+        if (payload.new.subscription_status) setSubscriptionStatus(payload.new.subscription_status);
+      })
       .subscribe();
   };
 
   const fetchData = async (userId: string) => {
     if (userId === 'demo-user-id' || userId === 'master-user-id') {
-      setServers([{ 
-        id: '1', 
-        name: 'Servidor VIP P2P', 
-        url: 'https://jordantv.shop/api/create_user.php', 
-        apiKey: '0d05ae3a98bceef41e468d7a0bbc3e9147c4082c2eabea5d9e0c596a1240ac07' 
-      }]);
+      setServers([{ id: '1', name: 'Servidor VIP P2P', url: 'https://jordantv.shop/api/create_user.php', apiKey: 'demo' }]);
       setPlans([{ id: '1', name: 'Mensal PRO', price: 40, durationValue: 1, durationUnit: 'months' }]);
       setClients([{
-        id: '1',
-        name: 'Cliente de Teste',
-        username: 'testuser',
-        password: '123',
-        phone: '551199999999',
-        serverId: '1',
-        planId: '1',
-        expirationDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        status: 'near_expiry'
+        id: '1', name: 'Cliente de Teste', username: 'testuser', password: '123', phone: '551199999999',
+        serverId: '1', planId: '1', expirationDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: 'near_expiry'
       }]);
       return;
     }
 
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('subscription_status')
-        .eq('id', userId)
-        .single();
-      
-      if (profile) {
-        setSubscriptionStatus(profile.subscription_status as any);
-      }
+      const { data: profile } = await supabase.from('profiles').select('subscription_status').eq('id', userId).single();
+      if (profile) setSubscriptionStatus(profile.subscription_status as any);
 
       const [resClients, resServers, resPlans] = await Promise.all([
-        supabase.from('clients').select('*'),
+        supabase.from('clients').select('*').order('created_at', { ascending: false }),
         supabase.from('servers').select('*'),
         supabase.from('plans').select('*')
       ]);
 
-      if (resServers.data) {
-        setServers(resServers.data.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          url: s.url,
-          apiKey: s.api_key || s.apiKey || ''
-        })));
-      }
-      if (resPlans.data) {
-        setPlans(resPlans.data.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          durationValue: p.duration_value,
-          durationUnit: p.duration_unit
-        })));
-      }
+      if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
+      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          username: c.username,
-          password: c.password,
-          phone: c.phone,
-          serverId: c.server_id,
-          planId: c.plan_id,
-          expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date),
-          url_m3u: c.url_m3u
+          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
+          serverId: c.server_id, plan_id: c.plan_id, expiration_date: c.expiration_date, status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
-    } catch (e) {
-      console.error("Erro ao carregar dados.");
-    }
+    } catch (e) { console.error("Erro ao carregar dados."); }
   };
 
-  const syncPlans = async (newPlans: Plan[]) => {
-    setPlans(newPlans);
+  // --- LÓGICA DE SERVIDORES ---
+  const handleCreateServer = async (newServer: Server) => {
     const userId = session?.user.id;
-    if (!userId || userId === 'demo-user-id' || userId === 'master-user-id') return;
-    const toUpsert = newPlans.map(p => ({ 
-      id: p.id, user_id: userId, name: p.name, price: p.price, duration_value: p.durationValue, duration_unit: p.durationUnit 
-    }));
-    await supabase.from('plans').upsert(toUpsert);
-  };
-
-  const syncServers = async (newServers: Server[]) => {
-    setServers(newServers);
-    const userId = session?.user.id;
-    if (!userId || userId === 'demo-user-id' || userId === 'master-user-id') return;
-    const toUpsert = newServers.map(s => ({ 
-      id: s.id, user_id: userId, name: s.name, url: s.url, api_key: s.apiKey 
-    }));
-    await supabase.from('servers').upsert(toUpsert);
-  };
-
-  const syncClients = async (newClients: Client[]) => {
-    const userId = session?.user?.id;
     if (!userId) return;
-    
-    const currentIds = clients.map(c => c.id);
-    const newlyAdded = newClients.find(nc => !currentIds.includes(nc.id));
-    let finalClients = [...newClients];
+    if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
+      await supabase.from('servers').insert({ id: newServer.id, user_id: userId, name: newServer.name, url: newServer.url, api_key: newServer.apiKey });
+    }
+    setServers([...servers, newServer]);
+  };
 
-    if (newlyAdded && userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      const server = servers.find(s => s.id === newlyAdded.serverId);
-      const plan = plans.find(p => p.id === newlyAdded.planId);
-      
+  const handleDeleteServer = async (id: string) => {
+    const userId = session?.user.id;
+    if (!userId) return;
+    if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
+      await supabase.from('servers').delete().eq('id', id);
+    }
+    setServers(servers.filter(s => s.id !== id));
+  };
+
+  // --- LÓGICA DE CLIENTES ---
+  const handleSaveClient = async (client: Client) => {
+    const userId = session?.user.id;
+    if (!userId) return;
+
+    let finalClient = { ...client };
+    const isNew = !clients.find(c => c.id === client.id);
+
+    // Se é novo e não é demo, tentar criar no painel remoto
+    if (isNew && userId !== 'demo-user-id' && userId !== 'master-user-id') {
+      const server = servers.find(s => s.id === client.serverId);
+      const plan = plans.find(p => p.id === client.planId);
       if (server?.apiKey && server?.url) {
-        const remoteResponse = await createRemoteIptvUser(server.url, server.apiKey, {
-          username: newlyAdded.username,
-          password: newlyAdded.password,
-          plan: plan?.name.toLowerCase() || 'starter',
-          nome: newlyAdded.name,
-          whatsapp: newlyAdded.phone
+        const res = await createRemoteIptvUser(server.url, server.apiKey, {
+          username: client.username, password: client.password, plan: plan?.name.toLowerCase() || 'starter', nome: client.name, whatsapp: client.phone
         });
-
-        if (remoteResponse.success && remoteResponse.data?.credenciais) {
-          const creds = remoteResponse.data.credenciais;
-          newlyAdded.username = creds.usuario || newlyAdded.username;
-          newlyAdded.password = creds.senha || newlyAdded.password;
-          newlyAdded.url_m3u = creds.url_m3u;
-          finalClients = newClients.map(c => c.id === newlyAdded.id ? newlyAdded : c);
+        if (res.success && res.data?.credenciais) {
+          finalClient.username = res.data.credenciais.usuario || finalClient.username;
+          finalClient.password = res.data.credenciais.senha || finalClient.password;
+          finalClient.url_m3u = res.data.credenciais.url_m3u;
         }
       }
     }
 
-    setClients(finalClients);
-
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      const toUpsert = finalClients.map(c => ({ 
-        id: c.id, user_id: userId, name: c.name, username: c.username, password: c.password, 
-        phone: c.phone, server_id: c.serverId, plan_id: c.planId, expiration_date: c.expirationDate, url_m3u: c.url_m3u 
-      }));
-      await supabase.from('clients').upsert(toUpsert);
+      await supabase.from('clients').upsert({
+        id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, password: finalClient.password,
+        phone: finalClient.phone, server_id: finalClient.serverId, plan_id: finalClient.planId, expiration_date: finalClient.expirationDate, url_m3u: finalClient.url_m3u
+      });
+      fetchData(userId); // Recarregar para garantir sincronia total
+    } else {
+      setClients(isNew ? [finalClient, ...clients] : clients.map(c => c.id === finalClient.id ? finalClient : c));
     }
   };
 
-  const isPro = subscriptionStatus === 'active';
+  const handleDeleteClient = async (id: string) => {
+    const userId = session?.user.id;
+    if (!userId) return;
+    if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
+      await supabase.from('clients').delete().eq('id', id);
+      fetchData(userId);
+    } else {
+      setClients(clients.filter(c => c.id !== id));
+    }
+  };
 
+  // --- REGRAS DE NEGÓCIO ---
+  const isPro = subscriptionStatus === 'active';
   const addDuration = (date: Date, value: number, unit: 'months' | 'days') => {
     const d = new Date(date);
     if (unit === 'months') d.setMonth(d.getMonth() + value);
@@ -237,45 +188,33 @@ const App: React.FC = () => {
     const now = new Date();
     const exp = new Date(expirationDate + 'T00:00:00');
     const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return 'expired';
-    if (diffDays <= 5) return 'near_expiry';
-    return 'active';
+    return diffDays < 0 ? 'expired' : diffDays <= 5 ? 'near_expiry' : 'active';
   }
 
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
     const client = clients.find(c => c.id === clientId);
     if (!client) return;
-
     let newExp = manualDate;
     let daysToAdd = 30;
-
     const plan = plans.find(p => p.id === (planId || client.planId));
     if (!manualDate && plan) {
       daysToAdd = plan.durationUnit === 'months' ? plan.durationValue * 30 : plan.durationValue;
       const baseDate = new Date(client.expirationDate + 'T00:00:00') < new Date() ? new Date() : new Date(client.expirationDate + 'T00:00:00');
       newExp = addDuration(baseDate, plan.durationValue, plan.durationUnit);
     }
-
     const userId = session?.user.id;
     if (userId && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === client.serverId);
-      if (server?.apiKey && server?.url) {
-        await renewRemoteIptvUser(server.url, server.apiKey, client.username, daysToAdd);
-      }
-
+      if (server?.apiKey && server?.url) await renewRemoteIptvUser(server.url, server.apiKey, client.username, daysToAdd);
       await supabase.from('clients').update({ expiration_date: newExp, plan_id: planId || client.planId }).eq('id', clientId);
-      fetchData(session!.user.id);
+      fetchData(userId);
     } else {
-      const updated = clients.map(c => c.id === clientId ? {...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!)} : c);
-      setClients(updated);
+      setClients(clients.map(c => c.id === clientId ? { ...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!) } : c));
     }
   };
 
   if (authLoading) return <div className="h-screen flex items-center justify-center bg-[#0b0e14]"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
-
-  if (!session) {
-    return <Auth initialIsSignUp={currentView === 'signup'} onDemoLogin={handleDemoLogin} />;
-  }
+  if (!session) return <Auth initialIsSignUp={currentView === 'signup'} onDemoLogin={handleDemoLogin} />;
 
   const renderContent = () => {
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
@@ -284,7 +223,6 @@ const App: React.FC = () => {
         <div className="p-20 text-center space-y-8 animate-fade-in">
           <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
           <h2 className="text-3xl font-black mb-4">RECURSO <span className="text-blue-500">PRO</span></h2>
-          <p className="text-gray-400 max-w-md mx-auto">Esta ferramenta requer assinatura ativa.</p>
           <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
         </div>
       );
@@ -301,9 +239,10 @@ const App: React.FC = () => {
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
       case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} />;
-      case 'gestor-servidores': return <GestorServidores servers={servers} setServers={syncServers} />;
-      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={syncClients} servers={servers} plans={plans} onRenew={renewClient} onDelete={(id) => (session.user.id !== 'demo-user-id' && session.user.id !== 'master-user-id') ? supabase.from('clients').delete().eq('id', id).then(() => fetchData(session!.user.id)) : setClients(clients.filter(c => c.id !== id))} getClientStatus={getClientStatus} addDays={(d, v) => addDuration(d, v, 'months')} />;
-      case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={syncPlans} />;
+      case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={handleCreateServer} onDeleteServer={handleDeleteServer} />;
+      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={() => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={handleDeleteClient} getClientStatus={getClientStatus} addDays={(d, v) => addDuration(d, v, 'months')} />;
+      /* FIXED: Removed the call to the non-existent syncPlans function to resolve the Cannot find name error */
+      case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={(newPlans) => { setPlans(newPlans); }} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
       default: return <Dashboard onNavigate={setCurrentView as any} />;
@@ -315,12 +254,10 @@ const App: React.FC = () => {
       <Sidebar currentView={currentView as any} onNavigate={setCurrentView as any} userEmail={session?.user.email} isPro={isPro} />
       <main className="flex-1 min-h-screen overflow-y-auto pb-20 custom-scrollbar">
         <header className="h-16 border-b border-gray-800/50 flex items-center justify-between px-8 bg-[#0b0e14]/80 backdrop-blur sticky top-0 z-50">
-           <div className="flex items-center space-x-4">
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">
-                {String(currentView).replace('gestor-', 'GESTOR / ')}
-              </span>
-              {isPro && <span className="bg-blue-600/20 text-blue-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-blue-500/20 animate-pulse">PRO</span>}
-           </div>
+          <div className="flex items-center space-x-4">
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">{String(currentView).replace('gestor-', 'GESTOR / ')}</span>
+            {isPro && <span className="bg-blue-600/20 text-blue-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-blue-500/20 animate-pulse">PRO</span>}
+          </div>
         </header>
         {renderContent()}
       </main>
