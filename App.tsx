@@ -12,7 +12,6 @@ import LogoGenerator from './components/LogoGenerator';
 import AdAnalyzer from './components/AdAnalyzer';
 import SalesCopy from './components/SalesCopy';
 import Auth from './components/Auth';
-import LandingPage from './components/LandingPage';
 
 import GestorDashboard from './components/GestorDashboard';
 import GestorServidores from './components/GestorServidores';
@@ -25,7 +24,8 @@ import { supabase } from './lib/supabase';
 import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup' | 'landing'>('landing');
+  // Inicializa agora em 'login' em vez de 'landing'
+  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
   const [session, setSession] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
@@ -42,7 +42,7 @@ const App: React.FC = () => {
       if (session) {
         fetchData(session.user.id);
         setupRealtimeSubscription(session.user.id);
-        if (currentView === 'login' || currentView === 'signup' || currentView === 'landing') {
+        if (currentView === 'login' || currentView === 'signup') {
           setCurrentView('dashboard');
         }
       }
@@ -55,7 +55,7 @@ const App: React.FC = () => {
         setupRealtimeSubscription(session.user.id);
         setCurrentView('dashboard');
       } else {
-        setCurrentView('landing');
+        setCurrentView('login');
       }
     });
 
@@ -243,12 +243,8 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (currentView === 'landing' && !session) {
-      return <LandingPage onLogin={() => setCurrentView('login')} onSignup={() => setCurrentView('signup')} />;
-    }
-
     if (currentView === 'login' || currentView === 'signup') {
-      return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('landing')} onDemoLogin={handleDemoLogin} />;
+      return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('login')} onDemoLogin={handleDemoLogin} />;
     }
 
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
@@ -282,7 +278,11 @@ const App: React.FC = () => {
     }
   };
 
-  const isAuthView = currentView === 'login' || currentView === 'signup' || currentView === 'landing';
+  const isAuthView = currentView === 'login' || currentView === 'signup';
+
+  if (authLoading) {
+    return <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  }
 
   return (
     <div className="flex min-h-screen bg-[#0b0e14] text-gray-100 overflow-x-hidden selection:bg-blue-500/30">
