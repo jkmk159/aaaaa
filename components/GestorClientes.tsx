@@ -16,11 +16,18 @@ interface Props {
 
 const GestorClientes: React.FC<Props> = ({ clients, onSaveClient, servers, plans, onRenew, onDelete, getClientStatus, addDays }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [renewingClient, setRenewingClient] = useState<Client | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [formData, setFormData] = useState({ 
     name: '', username: '', password: '', phone: '', serverId: '', planId: '', expirationDate: '' 
+  });
+
+  const [renewFormData, setRenewFormData] = useState({
+    planId: '',
+    manualDate: ''
   });
 
   const handleOpenCreate = () => {
@@ -36,6 +43,24 @@ const GestorClientes: React.FC<Props> = ({ clients, onSaveClient, servers, plans
       serverId: client.serverId, planId: client.planId, expirationDate: client.expirationDate 
     });
     setIsModalOpen(true);
+  };
+
+  const handleOpenRenew = (client: Client) => {
+    setRenewingClient(client);
+    setRenewFormData({
+      planId: client.planId,
+      manualDate: ''
+    });
+    setIsRenewModalOpen(true);
+  };
+
+  const handleConfirmRenew = () => {
+    if (!renewingClient || !renewFormData.planId) {
+      alert("Selecione um plano para renovar.");
+      return;
+    }
+    onRenew(renewingClient.id, renewFormData.planId, renewFormData.manualDate || undefined);
+    setIsRenewModalOpen(false);
   };
 
   const handleSave = () => {
@@ -64,6 +89,22 @@ const GestorClientes: React.FC<Props> = ({ clients, onSaveClient, servers, plans
 
     onSaveClient(clientToSave);
     setIsModalOpen(false);
+  };
+
+  const generateManualM3uLink = (client: Client) => {
+    const server = servers.find(s => s.id === client.serverId);
+    if (!server) return "";
+    
+    try {
+      // Tenta extrair apenas o domínio/host da URL do servidor cadastrado
+      const urlObj = new URL(server.url);
+      const host = urlObj.hostname;
+      // Constrói o link com as credenciais MANUAIS digitadas no formulário
+      return `http://${host}/get.php?username=${client.username}&password=${client.password}&type=m3u_plus&output=ts`;
+    } catch (e) {
+      // Fallback caso a URL do servidor não seja válida
+      return `http://jordantv.shop/get.php?username=${client.username}&password=${client.password}&type=m3u_plus&output=ts`;
+    }
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -115,7 +156,6 @@ const GestorClientes: React.FC<Props> = ({ clients, onSaveClient, servers, plans
         </div>
       </div>
 
-      {/* Container da tabela com rolagem horizontal se necessário */}
       <div className="bg-[#141824] rounded-[40px] border border-gray-800 overflow-x-auto shadow-2xl custom-scrollbar">
         <table className="w-full text-left min-w-[1000px]">
           <thead className="bg-black/20 border-b border-gray-800">
@@ -154,46 +194,21 @@ const GestorClientes: React.FC<Props> = ({ clients, onSaveClient, servers, plans
                   <p className="text-[9px] text-gray-500 font-bold uppercase">Restam {Math.max(0, Math.ceil((new Date(c.expirationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))} dias</p>
                 </td>
                 <td className="px-8 py-6 text-right">
-                  {/* Container de botões com rolagem horizontal própria e largura máxima para caber na coluna */}
                   <div className="flex justify-end items-center border border-gray-800/50 rounded-2xl p-1 bg-black/20 w-fit ml-auto max-w-[210px] overflow-x-auto custom-scrollbar no-scrollbar-on-desktop">
-                    {/* WHATSAPP */}
-                    <button 
-                      onClick={() => openWhatsApp(c.phone, c.name)} 
-                      className="p-3 text-green-500 hover:bg-green-500 hover:text-white transition-all rounded-xl shrink-0"
-                      title="WhatsApp"
-                    >
+                    <button onClick={() => openWhatsApp(c.phone, c.name)} className="p-3 text-green-500 hover:bg-green-500 hover:text-white transition-all rounded-xl shrink-0" title="WhatsApp">
                       <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.539 2.016 2.041-.54c.947.527 1.997.807 3.245.807 3.181 0 5.767-2.587 5.768-5.766.001-3.181-2.587-5.77-5.766-5.77zm3.846 8.012c-.149.413-.866.758-1.204.801-.339.043-.77.067-1.288-.099-.302-.096-.682-.234-1.159-.444-2.03-.893-3.341-2.994-3.442-3.127-.101-.132-.759-.993-.759-1.907 0-.913.48-1.362.65-1.577.169-.215.372-.269.497-.269.125 0 .25 0 .356.006.114.004.266-.042.415.321.155.376.53 1.277.575 1.368.045.091.075.197.015.318-.06.121-.09.197-.181.303-.09.106-.19.236-.271.317-.091.091-.186.19-.08.373.106.183.471.777.997 1.248.679.608 1.248.797 1.431.887.182.09.289.076.395-.045.106-.121.455-.53.576-.711.121-.182.242-.151.408-.091.166.06.1.48 2.04.947.166.075.277.114.338.213.061.099.061.572-.088.985z"/></svg>
                     </button>
-                    {/* COPIAR M3U */}
-                    <button 
-                      onClick={() => copyToClipboard(c.url_m3u || '', 'Link M3U')} 
-                      className="p-3 text-blue-400 hover:bg-blue-400 hover:text-white transition-all rounded-xl border-l border-gray-800/50 shrink-0"
-                      title="M3U"
-                    >
+                    {/* BOTÃO COPIAR M3U ATUALIZADO PARA USAR O LINK MANUAL */}
+                    <button onClick={() => copyToClipboard(generateManualM3uLink(c), 'Link M3U Manual')} className="p-3 text-blue-400 hover:bg-blue-400 hover:text-white transition-all rounded-xl border-l border-gray-800/50 shrink-0" title="Copiar M3U Manual">
                       <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
                     </button>
-                    {/* RENOVAR */}
-                    <button 
-                      onClick={() => onRenew(c.id, c.planId)} 
-                      className="p-3 text-cyan-500 hover:bg-cyan-500 hover:text-white transition-all rounded-xl border-l border-gray-800/50 shrink-0"
-                      title="Renovar"
-                    >
+                    <button onClick={() => handleOpenRenew(c)} className="p-3 text-cyan-500 hover:bg-cyan-500 hover:text-white transition-all rounded-xl border-l border-gray-800/50 shrink-0" title="Renovar">
                       <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     </button>
-                    {/* EDITAR */}
-                    <button 
-                      onClick={() => handleOpenEdit(c)} 
-                      className="p-3 text-gray-400 hover:bg-white hover:text-black transition-all rounded-xl border-l border-gray-800/50 shrink-0"
-                      title="Editar"
-                    >
+                    <button onClick={() => handleOpenEdit(c)} className="p-3 text-gray-400 hover:bg-white hover:text-black transition-all rounded-xl border-l border-gray-800/50 shrink-0" title="Editar">
                       <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                     </button>
-                    {/* EXCLUIR */}
-                    <button 
-                      onClick={() => { if(confirm('Excluir este cliente?')) onDelete(c.id); }} 
-                      className="p-3 text-red-500 hover:bg-red-500 hover:text-white transition-all rounded-xl border-l border-gray-800/50 shrink-0"
-                      title="Excluir"
-                    >
+                    <button onClick={() => { if(confirm('Excluir este cliente?')) onDelete(c.id); }} className="p-3 text-red-500 hover:bg-red-500 hover:text-white transition-all rounded-xl border-l border-gray-800/50 shrink-0" title="Excluir">
                       <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                   </div>
@@ -209,6 +224,49 @@ const GestorClientes: React.FC<Props> = ({ clients, onSaveClient, servers, plans
           </tbody>
         </table>
       </div>
+
+      {isRenewModalOpen && renewingClient && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setIsRenewModalOpen(false)}></div>
+          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-cyan-500"></div>
+            <h2 className="text-3xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">RENOVAR <span className="text-cyan-500">CLIENTE</span></h2>
+            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-8">Cliente: {renewingClient.name}</p>
+            
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Selecionar Plano de Renovação</label>
+                <select 
+                  value={renewFormData.planId} 
+                  onChange={e => setRenewFormData({ ...renewFormData, planId: e.target.value })} 
+                  className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-cyan-500 outline-none appearance-none"
+                >
+                  <option value="">Escolha o Plano</option>
+                  {plans.map(p => <option key={p.id} value={p.id}>{p.name} - R${p.price} ({p.durationValue} {p.durationUnit === 'months' ? 'Mês(es)' : 'Dia(s)'})</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Data de Vencimento Manual (Opcional)</label>
+                <input 
+                  type="date" 
+                  value={renewFormData.manualDate} 
+                  onChange={e => setRenewFormData({ ...renewFormData, manualDate: e.target.value })} 
+                  className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold focus:border-cyan-500 outline-none" 
+                />
+                <p className="text-[8px] text-gray-600 font-bold italic ml-1 leading-tight">Se deixado em branco, a data será calculada automaticamente com base no plano escolhido somado à data de vencimento atual.</p>
+              </div>
+
+              <div className="flex flex-col gap-3 pt-6">
+                <button onClick={handleConfirmRenew} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all shadow-xl shadow-cyan-600/20 active:scale-95">
+                  CONFIRMAR RENOVAÇÃO
+                </button>
+                <button onClick={() => setIsRenewModalOpen(false)} className="w-full text-gray-500 font-bold uppercase text-[9px] tracking-widest py-2 hover:text-white transition-colors">CANCELAR</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
