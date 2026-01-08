@@ -4,10 +4,11 @@ import { Server } from '../types';
 
 interface Props {
   servers: Server[];
-  setServers: (servers: Server[]) => void;
+  onAddServer: (server: Server) => void;
+  onDeleteServer: (id: string) => void;
 }
 
-const GestorServidores: React.FC<Props> = ({ servers, setServers }) => {
+const GestorServidores: React.FC<Props> = ({ servers, onAddServer, onDeleteServer }) => {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -23,14 +24,10 @@ const GestorServidores: React.FC<Props> = ({ servers, setServers }) => {
       url,
       apiKey
     };
-    setServers([...servers, newServer]);
+    onAddServer(newServer);
     setName('');
     setUrl('');
     setApiKey('');
-  };
-
-  const removeServer = (id: string) => {
-    setServers(servers.filter(s => s.id !== id));
   };
 
   return (
@@ -105,7 +102,7 @@ const GestorServidores: React.FC<Props> = ({ servers, setServers }) => {
             <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between items-center">
                <span className="text-[8px] font-black text-gray-600 uppercase tracking-widest">Token: ••••••••{s.apiKey.slice(-4)}</span>
                <button 
-                 onClick={() => removeServer(s.id)} 
+                 onClick={() => onDeleteServer(s.id)} 
                  className="text-[10px] font-black text-red-500/50 uppercase hover:text-red-500 transition-colors"
                >
                  Remover
