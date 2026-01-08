@@ -103,8 +103,16 @@ const App: React.FC = () => {
       if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, plan_id: c.plan_id, expiration_date: c.expiration_date, status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
+          id: c.id, 
+          name: c.name, 
+          username: c.username, 
+          password: c.password, 
+          phone: c.phone,
+          serverId: c.server_id, 
+          planId: c.plan_id, 
+          expirationDate: c.expiration_date, 
+          status: getClientStatus(c.expiration_date), 
+          url_m3u: c.url_m3u
         })));
       }
     } catch (e) { console.error("Erro ao carregar dados."); }
@@ -146,9 +154,10 @@ const App: React.FC = () => {
           username: client.username, password: client.password, plan: plan?.name.toLowerCase() || 'starter', nome: client.name, whatsapp: client.phone
         });
         if (res.success && res.data?.credenciais) {
-          finalClient.username = res.data.credenciais.usuario || finalClient.username;
-          finalClient.password = res.data.credenciais.senha || finalClient.password;
-          finalClient.url_m3u = res.data.credenciais.url_m3u;
+          const creds = res.data.credenciais;
+          finalClient.username = creds.usuario || finalClient.username;
+          finalClient.password = creds.senha || finalClient.password;
+          finalClient.url_m3u = creds.url_m3u;
         }
       }
     }
@@ -241,7 +250,6 @@ const App: React.FC = () => {
       case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={handleCreateServer} onDeleteServer={handleDeleteServer} />;
       case 'gestor-clientes': return <GestorClientes clients={clients} setClients={() => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={handleDeleteClient} getClientStatus={getClientStatus} addDays={(d, v) => addDuration(d, v, 'months')} />;
-      /* FIXED: Removed the call to the non-existent syncPlans function to resolve the Cannot find name error */
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={(newPlans) => { setPlans(newPlans); }} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
