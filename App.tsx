@@ -102,6 +102,7 @@ const App: React.FC = () => {
       if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
       if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
+        // CORREÇÃO CRÍTICA: Mapeamento camelCase para evitar erro TS2345 no deploy
         setClients(resClients.data.map((c: any) => ({
           id: c.id, 
           name: c.name, 
@@ -132,7 +133,12 @@ const App: React.FC = () => {
     const userId = session?.user.id;
     if (!userId) return;
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      await supabase.from('servers').delete().eq('id', id);
+      // Deleta do banco primeiro
+      const { error } = await supabase.from('servers').delete().eq('id', id);
+      if (error) {
+        console.error("Erro ao deletar servidor:", error);
+        return;
+      }
     }
     setServers(servers.filter(s => s.id !== id));
   };
@@ -163,11 +169,33 @@ const App: React.FC = () => {
     }
 
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      await supabase.from('clients').upsert({
-        id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, password: finalClient.password,
-        phone: finalClient.phone, server_id: finalClient.serverId, plan_id: finalClient.planId, expiration_date: finalClient.expirationDate, url_m3u: finalClient.url_m3u
+      // Upsert garantindo que os campos do banco sejam snake_case
+      const { error } = await supabase.from('clients').upsert({
+        id: finalClient.id, 
+        user_id: userId, 
+        name: finalClient.name, 
+        username: finalClient.username, 
+        password: finalClient.password,
+        phone: finalClient.phone, 
+        server_id: finalClient.serverId, 
+        plan_id: finalClient.planId, 
+        expiration_date: finalClient.expirationDate, 
+        url_m3u: finalClient.url_m3u
       });
-      fetchData(userId); // Recarregar para garantir sincronia total
+      
+      if (error) {
+        console.error("Erro ao salvar cliente:", error);
+        return;
+      }
+      
+      // Atualiza o estado local imediatamente e depois sincroniza com o banco
+      setClients(prev => {
+        const exists = prev.find(c => c.id === finalClient.id);
+        if (exists) return prev.map(c => c.id === finalClient.id ? finalClient : c);
+        return [finalClient, ...prev];
+      });
+      
+      fetchData(userId); 
     } else {
       setClients(isNew ? [finalClient, ...clients] : clients.map(c => c.id === finalClient.id ? finalClient : c));
     }
@@ -177,7 +205,11 @@ const App: React.FC = () => {
     const userId = session?.user.id;
     if (!userId) return;
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      await supabase.from('clients').delete().eq('id', id);
+      const { error } = await supabase.from('clients').delete().eq('id', id);
+      if (error) {
+        console.error("Erro ao deletar cliente:", error);
+        return;
+      }
       fetchData(userId);
     } else {
       setClients(clients.filter(c => c.id !== id));
