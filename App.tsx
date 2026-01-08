@@ -88,7 +88,12 @@ const App: React.FC = () => {
 
   const fetchData = async (userId: string) => {
     if (userId === 'demo-user-id' || userId === 'master-user-id') {
-      setServers([{ id: '1', name: 'Servidor VIP P2P', url: 'https://jordantv.shop/api/create_user.php', apiKey: 'demo' }]);
+      setServers([{ 
+        id: '1', 
+        name: 'Servidor VIP P2P', 
+        url: 'https://jordantv.shop/api/create_user.php', 
+        apiKey: '0d05ae3a98bceef41e468d7a0bbc3e9147c4082c2eabea5d9e0c596a1240ac07' 
+      }]);
       setPlans([{ id: '1', name: 'Mensal PRO', price: 40, durationValue: 1, durationUnit: 'months' }]);
       setClients([{
         id: '1',
@@ -121,7 +126,14 @@ const App: React.FC = () => {
         supabase.from('plans').select('*')
       ]);
 
-      if (resServers.data) setServers(resServers.data);
+      if (resServers.data) {
+        setServers(resServers.data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          url: s.url,
+          apiKey: s.api_key || s.apiKey || ''
+        })));
+      }
       if (resPlans.data) {
         setPlans(resPlans.data.map((p: any) => ({
           id: p.id,
@@ -155,12 +167,7 @@ const App: React.FC = () => {
     const userId = session?.user.id;
     if (!userId || userId === 'demo-user-id' || userId === 'master-user-id') return;
     const toUpsert = newPlans.map(p => ({ 
-      id: p.id, 
-      user_id: userId, 
-      name: p.name, 
-      price: p.price, 
-      duration_value: p.durationValue, 
-      duration_unit: p.durationUnit 
+      id: p.id, user_id: userId, name: p.name, price: p.price, duration_value: p.durationValue, duration_unit: p.durationUnit 
     }));
     await supabase.from('plans').upsert(toUpsert);
   };
@@ -170,11 +177,7 @@ const App: React.FC = () => {
     const userId = session?.user.id;
     if (!userId || userId === 'demo-user-id' || userId === 'master-user-id') return;
     const toUpsert = newServers.map(s => ({ 
-      id: s.id, 
-      user_id: userId, 
-      name: s.name, 
-      url: s.url, 
-      apiKey: s.apiKey 
+      id: s.id, user_id: userId, name: s.name, url: s.url, api_key: s.apiKey 
     }));
     await supabase.from('servers').upsert(toUpsert);
   };
@@ -187,7 +190,6 @@ const App: React.FC = () => {
     const newlyAdded = newClients.find(nc => !currentIds.includes(nc.id));
     let finalClients = [...newClients];
 
-    // Automação: Se o cliente é novo e temos servidor com API, criar no painel remoto
     if (newlyAdded && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === newlyAdded.serverId);
       const plan = plans.find(p => p.id === newlyAdded.planId);
@@ -215,16 +217,8 @@ const App: React.FC = () => {
 
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const toUpsert = finalClients.map(c => ({ 
-        id: c.id, 
-        user_id: userId, 
-        name: c.name, 
-        username: c.username, 
-        password: c.password, 
-        phone: c.phone, 
-        server_id: c.serverId, 
-        plan_id: c.planId, 
-        expiration_date: c.expirationDate, 
-        url_m3u: c.url_m3u 
+        id: c.id, user_id: userId, name: c.name, username: c.username, password: c.password, 
+        phone: c.phone, server_id: c.serverId, plan_id: c.planId, expiration_date: c.expirationDate, url_m3u: c.url_m3u 
       }));
       await supabase.from('clients').upsert(toUpsert);
     }
@@ -265,17 +259,11 @@ const App: React.FC = () => {
     const userId = session?.user.id;
     if (userId && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === client.serverId);
-      
-      // Automação: Enviar comando de renovação para a API do painel
       if (server?.apiKey && server?.url) {
         await renewRemoteIptvUser(server.url, server.apiKey, client.username, daysToAdd);
       }
 
-      await supabase.from('clients').update({ 
-        expiration_date: newExp, 
-        plan_id: planId || client.planId 
-      }).eq('id', clientId);
-      
+      await supabase.from('clients').update({ expiration_date: newExp, plan_id: planId || client.planId }).eq('id', clientId);
       fetchData(session!.user.id);
     } else {
       const updated = clients.map(c => c.id === clientId ? {...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!)} : c);
