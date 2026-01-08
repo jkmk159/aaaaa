@@ -12,6 +12,7 @@ import LogoGenerator from './components/LogoGenerator';
 import AdAnalyzer from './components/AdAnalyzer';
 import SalesCopy from './components/SalesCopy';
 import Auth from './components/Auth';
+import LandingPage from './components/LandingPage';
 
 import GestorDashboard from './components/GestorDashboard';
 import GestorServidores from './components/GestorServidores';
@@ -24,10 +25,11 @@ import { supabase } from './lib/supabase';
 import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
+  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup' | 'landing'>('landing');
   const [session, setSession] = useState<any | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [clients, setClients] = useState<Client[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -40,7 +42,7 @@ const App: React.FC = () => {
       if (session) {
         fetchData(session.user.id);
         setupRealtimeSubscription(session.user.id);
-        if (currentView === 'login' || currentView === 'signup') {
+        if (currentView === 'login' || currentView === 'signup' || currentView === 'landing') {
           setCurrentView('dashboard');
         }
       }
@@ -53,7 +55,7 @@ const App: React.FC = () => {
         setupRealtimeSubscription(session.user.id);
         setCurrentView('dashboard');
       } else {
-        setCurrentView('login');
+        setCurrentView('landing');
       }
     });
 
@@ -145,7 +147,6 @@ const App: React.FC = () => {
     let finalClient = { ...client };
     const isNew = !clients.find(c => c.id === client.id);
 
-    // Se for um novo cliente, chama a API do servidor IPTV
     if (isNew && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === client.serverId);
       const plan = plans.find(p => p.id === client.planId);
@@ -158,13 +159,10 @@ const App: React.FC = () => {
           whatsapp: client.phone
         });
         
-        // Mantém os dados manuais se o usuário preencheu o formulário
         if (res.success && res.data?.credenciais) {
           const creds = res.data.credenciais;
-          // Só sobrescreve se o campo estiver vazio
           if (!finalClient.username) finalClient.username = creds.usuario;
           if (!finalClient.password) finalClient.password = creds.senha;
-          // O link da API fica guardado mas priorizaremos o dinâmico na UI
           finalClient.url_m3u = creds.url_m3u;
         }
       }
@@ -245,6 +243,14 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (currentView === 'landing' && !session) {
+      return <LandingPage onLogin={() => setCurrentView('login')} onSignup={() => setCurrentView('signup')} />;
+    }
+
+    if (currentView === 'login' || currentView === 'signup') {
+      return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('landing')} onDemoLogin={handleDemoLogin} />;
+    }
+
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
     if (!isPro && premiumViews.includes(currentView as any)) {
       return (
@@ -276,16 +282,37 @@ const App: React.FC = () => {
     }
   };
 
+  const isAuthView = currentView === 'login' || currentView === 'signup' || currentView === 'landing';
+
   return (
     <div className="flex min-h-screen bg-[#0b0e14] text-gray-100 overflow-x-hidden selection:bg-blue-500/30">
-      <Sidebar currentView={currentView as any} onNavigate={setCurrentView as any} userEmail={session?.user.email} isPro={isPro} />
-      <main className="flex-1 min-h-screen overflow-y-auto pb-20 custom-scrollbar">
-        <header className="h-16 border-b border-gray-800/50 flex items-center justify-between px-8 bg-[#0b0e14]/80 backdrop-blur sticky top-0 z-50">
-          <div className="flex items-center space-x-4">
-            <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em]">{String(currentView).replace('gestor-', 'GESTOR / ')}</span>
-            {isPro && <span className="bg-blue-600/20 text-blue-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-blue-500/20 animate-pulse">PRO</span>}
-          </div>
-        </header>
+      {!isAuthView && session && (
+        <Sidebar 
+          currentView={currentView as any} 
+          onNavigate={setCurrentView as any} 
+          userEmail={session?.user.email} 
+          isPro={isPro} 
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+        />
+      )}
+      <main className={`flex-1 min-h-screen overflow-y-auto pb-20 custom-scrollbar ${!isAuthView ? 'w-full' : ''}`}>
+        {!isAuthView && session && (
+          <header className="h-16 border-b border-gray-800/50 flex items-center justify-between px-4 md:px-8 bg-[#0b0e14]/80 backdrop-blur sticky top-0 z-50">
+            <div className="flex items-center space-x-4">
+              <button 
+                onClick={() => setIsSidebarOpen(true)}
+                className="md:hidden p-2 hover:bg-white/5 rounded-lg text-gray-400"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+              </button>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate max-w-[150px] md:max-w-none">
+                {String(currentView).replace('gestor-', 'GESTOR / ')}
+              </span>
+              {isPro && <span className="bg-blue-600/20 text-blue-500 text-[8px] px-2 py-1 rounded font-black tracking-widest uppercase border border-blue-500/20 animate-pulse hidden sm:inline">PRO</span>}
+            </div>
+          </header>
+        )}
         {renderContent()}
       </main>
     </div>
