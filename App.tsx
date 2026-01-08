@@ -102,7 +102,6 @@ const App: React.FC = () => {
       if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
       if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
-        // CORREÇÃO CRÍTICA: Mapeamento camelCase para evitar erro TS2345 no deploy
         setClients(resClients.data.map((c: any) => ({
           id: c.id, 
           name: c.name, 
@@ -119,7 +118,6 @@ const App: React.FC = () => {
     } catch (e) { console.error("Erro ao carregar dados."); }
   };
 
-  // --- LÓGICA DE SERVIDORES ---
   const handleCreateServer = async (newServer: Server) => {
     const userId = session?.user.id;
     if (!userId) return;
@@ -133,17 +131,12 @@ const App: React.FC = () => {
     const userId = session?.user.id;
     if (!userId) return;
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      // Deleta do banco primeiro
       const { error } = await supabase.from('servers').delete().eq('id', id);
-      if (error) {
-        console.error("Erro ao deletar servidor:", error);
-        return;
-      }
+      if (error) return;
     }
     setServers(servers.filter(s => s.id !== id));
   };
 
-  // --- LÓGICA DE CLIENTES ---
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
     if (!userId) return;
@@ -151,25 +144,30 @@ const App: React.FC = () => {
     let finalClient = { ...client };
     const isNew = !clients.find(c => c.id === client.id);
 
-    // Se é novo e não é demo, tentar criar no painel remoto
     if (isNew && userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const server = servers.find(s => s.id === client.serverId);
       const plan = plans.find(p => p.id === client.planId);
       if (server?.apiKey && server?.url) {
         const res = await createRemoteIptvUser(server.url, server.apiKey, {
-          username: client.username, password: client.password, plan: plan?.name.toLowerCase() || 'starter', nome: client.name, whatsapp: client.phone
+          username: client.username, 
+          password: client.password, 
+          plan: plan?.name.toLowerCase() || 'starter', 
+          nome: client.name, 
+          whatsapp: client.phone
         });
+        
         if (res.success && res.data?.credenciais) {
           const creds = res.data.credenciais;
-          finalClient.username = creds.usuario || finalClient.username;
-          finalClient.password = creds.senha || finalClient.password;
+          // AJUSTE CRÍTICO: Só usa o retorno da API se o usuário não tiver digitado nada.
+          // Isso evita que o "AVJSAVNVNHU" vire "user_..." se a API retornar um lixo.
+          if (!finalClient.username) finalClient.username = creds.usuario;
+          if (!finalClient.password) finalClient.password = creds.senha;
           finalClient.url_m3u = creds.url_m3u;
         }
       }
     }
 
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      // Upsert garantindo que os campos do banco sejam snake_case
       const { error } = await supabase.from('clients').upsert({
         id: finalClient.id, 
         user_id: userId, 
@@ -188,13 +186,6 @@ const App: React.FC = () => {
         return;
       }
       
-      // Atualiza o estado local imediatamente e depois sincroniza com o banco
-      setClients(prev => {
-        const exists = prev.find(c => c.id === finalClient.id);
-        if (exists) return prev.map(c => c.id === finalClient.id ? finalClient : c);
-        return [finalClient, ...prev];
-      });
-      
       fetchData(userId); 
     } else {
       setClients(isNew ? [finalClient, ...clients] : clients.map(c => c.id === finalClient.id ? finalClient : c));
@@ -206,17 +197,13 @@ const App: React.FC = () => {
     if (!userId) return;
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
       const { error } = await supabase.from('clients').delete().eq('id', id);
-      if (error) {
-        console.error("Erro ao deletar cliente:", error);
-        return;
-      }
+      if (error) return;
       fetchData(userId);
     } else {
       setClients(clients.filter(c => c.id !== id));
     }
   };
 
-  // --- REGRAS DE NEGÓCIO ---
   const isPro = subscriptionStatus === 'active';
   const addDuration = (date: Date, value: number, unit: 'months' | 'days') => {
     const d = new Date(date);
