@@ -30,22 +30,38 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
     if (!userProfile) return;
     setLoading(true);
     try {
-      const { data: profilesData } = await supabase
+      // 1. Carregar Revendedores com filtro de hierarquia
+      let query = supabase
         .from('profiles')
         .select('*')
-        .eq('role', 'reseller')
-        .order('created_at', { ascending: false });
+        .eq('role', 'reseller');
+
+      // Se não for admin, vê apenas quem ele mesmo criou
+      if (userProfile.role !== 'admin') {
+        query = query.eq('parent_id', userProfile.id);
+      }
+
+      const { data: profilesData } = await query.order('created_at', { ascending: false });
 
       if (profilesData) setResellers(profilesData);
 
-      const { count: customersCount } = await supabase.from('customers').select('*', { count: 'exact', head: true });
-      const { count: resellersCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'reseller');
+      // 2. Carregar Métricas
+      // Clientes: Se for reseller, conta só os dele. Se for admin, conta todos.
+      let customersQuery = supabase.from('customers').select('*', { count: 'exact', head: true });
+      if (userProfile.role !== 'admin') {
+        customersQuery = customersQuery.eq('reseller_id', userProfile.id);
+      }
+      const { count: customersCount } = await customersQuery;
+
+      // Revendedores: Conta apenas os "filhos"
+      const totalResellers = profilesData?.length || 0;
       
+      // Créditos: Soma dos créditos dos seus revendedores diretos
       const totalCredits = profilesData?.reduce((acc, curr) => acc + (curr.credits || 0), 0) || 0;
 
       setMetrics({
         totalCustomers: customersCount || 0,
-        totalResellers: resellersCount || 0,
+        totalResellers: totalResellers,
         totalCreditsInCirculation: totalCredits
       });
     } catch (error) {
@@ -56,41 +72,42 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
   };
 
   const handleCreateReseller = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
+    e.preventDefault();
+    setLoading(true);
 
-  try {
-    // 1. Se NÃO for admin (ex: vuvu@vuvu), tenta descontar o crédito primeiro via RPC
-    if (userProfile?.role !== 'admin') {
-      const { error: rpcError } = await supabase.rpc('create_sub_reseller', {
-        p_email: resellerForm.email,
-        p_password: resellerForm.password,
-        p_parent_id: userProfile?.id
+    try {
+      // 1. Se NÃO for admin, desconta 1 crédito via RPC antes de criar
+      if (userProfile?.role !== 'admin') {
+        const { error: rpcError } = await supabase.rpc('create_sub_reseller', {
+          p_email: resellerForm.email,
+          p_password: resellerForm.password,
+          p_parent_id: userProfile?.id
+        });
+
+        if (rpcError) throw new Error(rpcError.message);
+      }
+
+      // 2. Cria o usuário no Auth
+      const { error: authError } = await supabase.auth.signUp({
+        email: resellerForm.email,
+        password: resellerForm.password,
       });
 
-      if (rpcError) throw new Error(rpcError.message);
+      if (authError) throw authError;
+
+      alert('Sucesso! Revendedor criado e 1 crédito descontado.');
+      setCreateResellerModal(false);
+      setResellerForm({ email: '', password: '' });
+      loadDashboardData();
+      onRefreshProfile(); 
+
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // 2. Agora cria o usuário no Auth (isso dispara o seu trigger de perfil automaticamente)
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: resellerForm.email,
-      password: resellerForm.password,
-    });
-
-    if (authError) throw authError;
-
-    alert('Revendedor criado! 1 crédito foi descontado do seu saldo.');
-    setCreateResellerModal(false);
-    setResellerForm({ email: '', password: '' });
-    loadDashboardData();
-    onRefreshProfile(); // Atualiza seu saldo na tela
-
-  } catch (error: any) {
-    alert(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
   const handleAdjustCredits = async () => {
     if (!selectedUser || amount <= 0) return;
     setLoading(true);
@@ -136,14 +153,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <MetricCard title="Créditos Totais" value={metrics.totalCreditsInCirculation} unit="UNIDADES" icon="💰" color="from-blue-600 to-cyan-500" />
-        <MetricCard title="Revendedores" value={metrics.totalResellers} unit="PARCEIROS" icon="👥" color="from-purple-600 to-pink-500" />
-        <MetricCard title="Clientes" value={metrics.totalCustomers} unit="ATIVOS" icon="📱" color="from-green-600 to-emerald-500" />
+        <MetricCard title="Créditos em Revendas" value={metrics.totalCreditsInCirculation} unit="UNIDADES" icon="💰" color="from-blue-600 to-cyan-500" />
+        <MetricCard title="Minhas Revendas" value={metrics.totalResellers} unit="PARCEIROS" icon="👥" color="from-purple-600 to-pink-500" />
+        <MetricCard title="Total Clientes" value={metrics.totalCustomers} unit="ATIVOS" icon="📱" color="from-green-600 to-emerald-500" />
       </div>
 
       <div className="bg-[#141824] rounded-[30px] border border-gray-800 overflow-hidden shadow-2xl">
         <div className="p-8 border-b border-gray-800 bg-[#1a1f2e]">
-          <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.3em]">Gestão de Parceiros</h3>
+          <h3 className="text-[10px] font-black uppercase text-gray-400 tracking-[0.3em]">
+            {userProfile?.role === 'admin' ? 'Todos os Parceiros' : 'Meus Sub-Revendedores'}
+          </h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -156,7 +175,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/30">
-              {resellers.map((reseller) => (
+              {resellers.length > 0 ? resellers.map((reseller) => (
                 <tr key={reseller.id} className="hover:bg-white/[0.02] transition-colors">
                   <td className="px-8 py-6 text-center">
                     <div className="w-10 h-10 mx-auto rounded-full bg-blue-600 flex items-center justify-center font-black text-white">
@@ -187,7 +206,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
                     </div>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={4} className="px-8 py-10 text-center text-gray-600 font-bold uppercase text-[10px] tracking-widest">
+                    Nenhum revendedor encontrado
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -197,6 +222,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm">
           <div className="bg-[#0b0e14] border border-gray-800 w-full max-w-md rounded-[40px] p-10">
              <h3 className="text-2xl font-black text-white uppercase text-center mb-6">Novo <span className="text-blue-500">Revendedor</span></h3>
+             <p className="text-center text-[10px] text-gray-500 font-bold uppercase mb-6 tracking-widest">
+                Custo: {userProfile?.role === 'admin' ? 'Grátis' : '1 Crédito'}
+             </p>
              <form onSubmit={handleCreateReseller} className="space-y-4">
                 <input 
                   type="email" required placeholder="E-mail"
