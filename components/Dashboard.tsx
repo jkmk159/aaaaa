@@ -72,41 +72,52 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
   };
 
   const handleCreateReseller = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      // 1. Se NÃO for admin, desconta 1 crédito via RPC antes de criar
-      if (userProfile?.role !== 'admin') {
-        const { error: rpcError } = await supabase.rpc('create_sub_reseller', {
-          p_email: resellerForm.email,
-          p_password: resellerForm.password,
-          p_parent_id: userProfile?.id
-        });
-
-        if (rpcError) throw new Error(rpcError.message);
-      }
-
-      // 2. Cria o usuário no Auth
-      const { error: authError } = await supabase.auth.signUp({
-        email: resellerForm.email,
-        password: resellerForm.password,
+  try {
+    // 1. Se for Revendedor, desconta crédito primeiro
+    if (userProfile?.role !== 'admin') {
+      const { error: rpcError } = await supabase.rpc('create_sub_reseller', {
+        p_email: resellerForm.email,
+        p_password: resellerForm.password,
+        p_parent_id: userProfile?.id
       });
-
-      if (authError) throw authError;
-
-      alert('Sucesso! Revendedor criado e 1 crédito descontado.');
-      setCreateResellerModal(false);
-      setResellerForm({ email: '', password: '' });
-      loadDashboardData();
-      onRefreshProfile(); 
-
-    } catch (error: any) {
-      alert(error.message);
-    } finally {
-      setLoading(false);
+      if (rpcError) throw new Error(rpcError.message);
     }
-  };
+
+    // 2. Cria o usuário no Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: resellerForm.email,
+      password: resellerForm.password,
+    });
+
+    if (authError) throw authError;
+
+    // 3. PASSO EXTRA: Garante que o parent_id seja o seu ID
+    if (authData.user && userProfile) {
+      await supabase
+        .from('profiles')
+        .update({ parent_id: userProfile.id })
+        .eq('id', authData.user.id);
+    }
+
+    alert('Revendedor criado com sucesso!');
+    setCreateResellerModal(false);
+    setResellerForm({ email: '', password: '' });
+    
+    // Recarrega os dados
+    setTimeout(() => {
+      loadDashboardData();
+      onRefreshProfile();
+    }, 1000);
+
+  } catch (error: any) {
+    alert(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAdjustCredits = async () => {
     if (!selectedUser || amount <= 0) return;
