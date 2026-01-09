@@ -2,6 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { ViewType, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Instância temporária para criação de usuários sem deslogar o admin
+const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
 
 interface DashboardProps {
   onNavigate: (view: ViewType) => void;
@@ -33,15 +38,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
     setLoading(true);
     setError(null);
     try {
+      // REGRA DE OURO: Sempre excluir o próprio ID da listagem para evitar auto-gestão
       let query = supabase
         .from('profiles')
         .select('id, email, role, credits, parent_id, updated_at')
+        .neq('id', userProfile.id) // <--- CRITICAL: Nunca lista a si mesmo
         .order('updated_at', { ascending: false });
 
       if (userProfile.role !== 'admin') {
         query = query.eq('parent_id', userProfile.id);
-      } else {
-        query = query.neq('id', userProfile.id);
       }
 
       const { data: profiles, error: pError } = await query;
@@ -70,35 +75,39 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
 
   const handleAdjustCredits = async () => {
     if (!adjustModal.target || amount <= 0 || !userProfile) return;
+    
+    // Segurança Adicional: Bloqueia auto-ajuste no front
+    if (adjustModal.target.id === userProfile.id) {
+      alert("Erro: Você não pode gerenciar seus próprios créditos.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const finalAmount = adjustModal.type === 'add' ? amount : -amount;
+      // Forçamos o valor absoluto para evitar que o usuário digite números negativos e inverta a lógica
+      const absoluteAmount = Math.abs(amount);
+      const finalAmount = adjustModal.type === 'add' ? absoluteAmount : -absoluteAmount;
       
-      if (userProfile.role !== 'admin' && adjustModal.type === 'add' && (userProfile.credits || 0) < amount) {
+      if (userProfile.role !== 'admin' && adjustModal.type === 'add' && (userProfile.credits || 0) < absoluteAmount) {
         alert("Erro: Você não possui saldo suficiente para transferir.");
         setLoading(false);
         return;
       }
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ credits: (adjustModal.target.credits || 0) + finalAmount })
-        .eq('id', adjustModal.target.id);
+      // Chamamos a RPC que contém as travas de banco
+      const { error: rpcError } = await supabase.rpc('adjust_credits', {
+        p_target_user_id: adjustModal.target.id,
+        p_amount: finalAmount,
+        p_admin_id: userProfile.id
+      });
 
-      if (error) {
-        const { error: rpcError } = await supabase.rpc('adjust_credits', {
-          p_target_user_id: adjustModal.target.id,
-          p_amount: finalAmount,
-          p_admin_id: userProfile.id
-        });
-        if (rpcError) throw rpcError;
-      }
+      if (rpcError) throw rpcError;
 
       setAdjustModal({ open: false, type: 'add', target: null });
       setAmount(0);
       await loadData();
       onRefreshProfile();
-      alert("Créditos atualizados!");
+      alert("Créditos atualizados com sucesso!");
     } catch (err: any) {
       alert("Falha: " + err.message);
     } finally {
@@ -107,20 +116,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
   };
 
   const handleDeleteUser = async (userId: string, email: string) => {
-    if (!window.confirm(`ATENÇÃO: Deseja realmente excluir permanentemente a revenda "${email}"? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
-
+    if (!window.confirm(`Deseja excluir permanentemente a revenda "${email}"?`)) return;
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', userId);
-
+      const { error } = await supabase.from('profiles').delete().eq('id', userId);
       if (error) throw error;
-
-      alert("Revendedor removido com sucesso.");
+      alert("Revendedor removido.");
       await loadData();
     } catch (err: any) {
       alert("Erro ao excluir: " + err.message);
@@ -132,9 +133,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile) return;
+
+    // Trava de criação por falta de créditos (Se sua regra for cobrar para criar)
+    // Se for grátis, apenas ignore. Se for pago, descomente:
+    /*
+    if (userProfile.role !== 'admin' && (userProfile.credits || 0) <= 0) {
+      alert("Você precisa de créditos para expandir sua rede de revendedores.");
+      return;
+    }
+    */
+
     setLoading(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // CRITICAL FIX: Criamos um cliente Supabase "descartável" sem persistência de sessão.
+      // Isso impede que o Admin seja deslogado ao criar um novo usuário.
+      const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false }
+      });
+
+      const { data: authData, error: authError } = await tempSupabase.auth.signUp({
         email: formData.email,
         password: formData.password,
       });
@@ -142,6 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
       if (authError) throw authError;
 
       if (authData.user) {
+        // Criamos o perfil vinculado ao criador
         const { error: upError } = await supabase
           .from('profiles')
           .upsert({ 
@@ -155,7 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
         if (upError) throw upError;
       }
 
-      alert("Sucesso! O novo revendedor foi cadastrado na sua rede.");
+      alert("Revendedor cadastrado com sucesso! Você continua logado como Admin.");
       setCreateModal(false);
       setFormData({ email: '', password: '' });
       await loadData();
@@ -173,12 +191,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">
             DASHBOARD <span className="text-blue-500">REVENDAS</span>
           </h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Gestão de Equipe e Saldo</p>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Controle de Hierarquia e Créditos</p>
         </div>
         <div className="flex gap-4">
           <button 
             onClick={loadData}
             className="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all border border-white/5 text-xl"
+            title="Sincronizar Dados"
           >
             🔄
           </button>
@@ -191,33 +210,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-3xl text-center">
-          <p className="text-red-500 text-[10px] font-black uppercase tracking-widest">⚠️ Erro de Banco de Dados</p>
-          <p className="text-gray-500 text-[9px] mt-2 uppercase">{error}</p>
-          <p className="text-blue-500 text-[9px] mt-4 font-bold uppercase cursor-pointer hover:underline" onClick={() => window.location.reload()}>Recarregar Página</p>
-        </div>
-      )}
-
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <MetricCard title="Saldo na Rede" value={metrics.totalCreditsInCirculation} unit="Créditos" icon="💰" color="text-blue-500" bg="bg-blue-600/5" />
-        <MetricCard title={userProfile?.role === 'admin' ? "Total Revendas" : "Sub-Revendas"} value={metrics.totalManaged} unit="Contas" icon="👥" color="text-purple-500" bg="bg-purple-600/5" />
+        <MetricCard title="Créditos em Revendas" value={metrics.totalCreditsInCirculation} unit="Total" icon="💰" color="text-blue-500" bg="bg-blue-600/5" />
+        <MetricCard title={userProfile?.role === 'admin' ? "Total Revendedores" : "Suas Revendas"} value={metrics.totalManaged} unit="Contas" icon="👥" color="text-purple-500" bg="bg-purple-600/5" />
         <MetricCard title="Clientes Finais" value={metrics.totalCustomers} unit="Ativos" icon="⚡" color="text-emerald-500" bg="bg-emerald-600/5" />
       </section>
 
       <section className="bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl overflow-hidden">
         <header className="p-8 border-b border-gray-800 bg-black/20 flex justify-between items-center">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Listagem de Parceiros</h3>
-          <span className="text-[8px] font-black text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full uppercase">Sincronizado</span>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Gerenciamento de Rede</h3>
+          <span className="text-[8px] font-black text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full uppercase">Sync Online</span>
         </header>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-black/40 text-[9px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-800">
               <tr>
-                <th className="px-8 py-5">Usuário / E-mail</th>
-                <th className="px-8 py-5 text-center">Créditos</th>
-                <th className="px-8 py-5 text-right">Ações</th>
+                <th className="px-8 py-5">Identificação</th>
+                <th className="px-8 py-5 text-center">Saldo Atual</th>
+                <th className="px-8 py-5 text-right">Ações de Gestão</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -249,15 +260,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
                     <button 
                       onClick={() => handleDeleteUser(user.id, user.email)}
                       className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-red-500/20"
-                      title="Excluir Revendedor"
+                      title="Excluir Definitivamente"
                     >
-                      🗑️ Excluir
+                      🗑️
                     </button>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={3} className="py-24 text-center opacity-20 font-black uppercase text-xs italic tracking-widest text-gray-500">Nenhum revendedor encontrado</td>
+                  <td colSpan={3} className="py-24 text-center opacity-20 font-black uppercase text-xs italic tracking-widest text-gray-500">
+                    Sua rede ainda não possui outros revendedores cadastrados.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -270,16 +283,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setAdjustModal({ ...adjustModal, open: false })}></div>
           <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
-            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter">
+            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">
               {adjustModal.type === 'add' ? 'ADICIONAR' : 'REMOVER'} <span className={adjustModal.type === 'add' ? 'text-emerald-500' : 'text-orange-500'}>CRÉDITOS</span>
             </h2>
             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-10">Alvo: {adjustModal.target.email}</p>
             <div className="space-y-6">
               <input 
                 type="number"
+                min="1"
                 value={amount}
-                onChange={e => setAmount(parseInt(e.target.value) || 0)}
-                placeholder="0"
+                onChange={e => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                placeholder="Quantidade"
                 className="w-full bg-black/40 border border-gray-700 rounded-2xl p-6 text-4xl font-black text-white focus:border-blue-500 outline-none text-center italic" 
               />
               <button 
@@ -309,7 +323,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
                 required
                 value={formData.email}
                 onChange={e => setFormData({...formData, email: e.target.value})}
-                placeholder="E-mail do parceiro"
+                placeholder="E-mail de acesso"
                 className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
               />
               <input 
@@ -317,7 +331,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
                 required
                 value={formData.password}
                 onChange={e => setFormData({...formData, password: e.target.value})}
-                placeholder="Senha inicial"
+                placeholder="Senha de acesso"
                 className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
               />
               <button 
@@ -327,6 +341,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
               >
                 {loading ? 'CADASTRANDO...' : 'CADASTRAR REVENDEDOR'}
               </button>
+              <p className="text-[8px] text-gray-600 font-bold uppercase text-center mt-2 italic">Você permanecerá logado em sua conta após o cadastro.</p>
             </form>
           </div>
         </div>
