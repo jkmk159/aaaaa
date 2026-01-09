@@ -1,12 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { ViewType, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-
-// Instância temporária para criação de usuários sem deslogar o admin
-const supabaseUrl = process.env.VITE_SUPABASE_URL || "https://pyjdlfbxgcutqzfqcpcd.supabase.co";
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || "";
 
 interface DashboardProps {
   onNavigate: (view: ViewType) => void;
@@ -14,358 +8,229 @@ interface DashboardProps {
   onRefreshProfile: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefreshProfile }) => {
+const Dashboard: React.FC<DashboardProps> = ({ userProfile, onRefreshProfile }) => {
   const [managedUsers, setManagedUsers] = useState<UserProfile[]>([]);
-  const [metrics, setMetrics] = useState({ totalCustomers: 0, totalManaged: 0, totalCreditsInCirculation: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const [adjustModal, setAdjustModal] = useState<{ open: boolean; type: 'add' | 'remove'; target: UserProfile | null }>({ 
-    open: false, type: 'add', target: null 
-  });
+
   const [createModal, setCreateModal] = useState(false);
-  const [amount, setAmount] = useState<number>(0);
+  const [adjustModal, setAdjustModal] = useState<{
+    open: boolean;
+    type: 'add' | 'remove';
+    target: UserProfile | null;
+  }>({ open: false, type: 'add', target: null });
+
+  const [amount, setAmount] = useState(0);
   const [formData, setFormData] = useState({ email: '', password: '' });
 
   useEffect(() => {
-    if (userProfile) {
-      loadData();
-    }
+    if (userProfile) loadData();
   }, [userProfile]);
 
   const loadData = async () => {
     if (!userProfile) return;
     setLoading(true);
-    setError(null);
     try {
-      // REGRA DE OURO: Sempre excluir o próprio ID da listagem para evitar auto-gestão
       let query = supabase
         .from('profiles')
-        .select('id, email, role, credits, parent_id, updated_at')
-        .neq('id', userProfile.id) // <--- CRITICAL: Nunca lista a si mesmo
+        .select('id, email, role, credits, parent_id')
+        .neq('id', userProfile.id)
         .order('updated_at', { ascending: false });
 
       if (userProfile.role !== 'admin') {
         query = query.eq('parent_id', userProfile.id);
       }
 
-      const { data: profiles, error: pError } = await query;
-      if (pError) throw pError;
-
-      const { count: customerCount } = await supabase
-        .from('clients')
-        .select('*', { count: 'exact', head: true });
-
-      if (profiles) {
-        setManagedUsers(profiles);
-        const inCirculation = profiles.reduce((acc, curr) => acc + (curr.credits || 0), 0);
-        setMetrics({
-          totalManaged: profiles.length,
-          totalCustomers: customerCount || 0,
-          totalCreditsInCirculation: inCirculation
-        });
-      }
-    } catch (err: any) {
-      console.error('Erro no Dashboard:', err.message);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAdjustCredits = async () => {
-    if (!adjustModal.target || amount <= 0 || !userProfile) return;
-    
-    // Segurança Adicional: Bloqueia auto-ajuste no front
-    if (adjustModal.target.id === userProfile.id) {
-      alert("Erro: Você não pode gerenciar seus próprios créditos.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Forçamos o valor absoluto para evitar que o usuário digite números negativos e inverta a lógica
-      const absoluteAmount = Math.abs(amount);
-      const finalAmount = adjustModal.type === 'add' ? absoluteAmount : -absoluteAmount;
-      
-      if (userProfile.role !== 'admin' && adjustModal.type === 'add' && (userProfile.credits || 0) < absoluteAmount) {
-        alert("Erro: Você não possui saldo suficiente para transferir.");
-        setLoading(false);
-        return;
-      }
-
-      // Chamamos a RPC que contém as travas de banco
-      const { error: rpcError } = await supabase.rpc('adjust_credits', {
-        p_target_user_id: adjustModal.target.id,
-        p_amount: finalAmount,
-        p_admin_id: userProfile.id
-      });
-
-      if (rpcError) throw rpcError;
-
-      setAdjustModal({ open: false, type: 'add', target: null });
-      setAmount(0);
-      await loadData();
-      onRefreshProfile();
-      alert("Créditos atualizados com sucesso!");
-    } catch (err: any) {
-      alert("Falha: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteUser = async (userId: string, email: string) => {
-    if (!window.confirm(`Deseja excluir permanentemente a revenda "${email}"?`)) return;
-    setLoading(true);
-    try {
-      const { error } = await supabase.from('profiles').delete().eq('id', userId);
+      const { data, error } = await query;
       if (error) throw error;
-      alert("Revendedor removido.");
-      await loadData();
-    } catch (err: any) {
-      alert("Erro ao excluir: " + err.message);
+      setManagedUsers(data || []);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message);
     } finally {
       setLoading(false);
     }
   };
 
+  /* ===========================
+     CRIAR REVENDA (EDGE FUNCTION)
+  ============================ */
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile) return;
 
-    // Trava de criação por falta de créditos (Se sua regra for cobrar para criar)
-    // Se for grátis, apenas ignore. Se for pago, descomente:
-    /*
-    if (userProfile.role !== 'admin' && (userProfile.credits || 0) <= 0) {
-      alert("Você precisa de créditos para expandir sua rede de revendedores.");
-      return;
-    }
-    */
-
     setLoading(true);
     try {
-      // CRITICAL FIX: Criamos um cliente Supabase "descartável" sem persistência de sessão.
-      // Isso impede que o Admin seja deslogado ao criar um novo usuário.
-      const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false }
+      const { error } = await supabase.functions.invoke('create_reseller', {
+        body: {
+          email: formData.email,
+          password: formData.password,
+          parent_id: userProfile.id,
+        },
       });
 
-      const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-      });
+      if (error) throw error;
 
-      if (authError) throw authError;
-
-      if (authData.user) {
-        // Criamos o perfil vinculado ao criador
-        const { error: upError } = await supabase
-          .from('profiles')
-          .upsert({ 
-            id: authData.user.id,
-            email: formData.email,
-            parent_id: userProfile.id,
-            role: 'reseller',
-            credits: 0
-          });
-          
-        if (upError) throw upError;
-      }
-
-      alert("Revendedor cadastrado com sucesso! Você continua logado como Admin.");
+      alert('Revendedor criado com sucesso!');
       setCreateModal(false);
       setFormData({ email: '', password: '' });
       await loadData();
     } catch (err: any) {
-      alert("Erro ao cadastrar: " + err.message);
+      alert(err.message || 'Erro ao criar revendedor');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ===========================
+     AJUSTAR CRÉDITOS (RPC SEGURA)
+  ============================ */
+  const handleAdjustCredits = async () => {
+    if (!adjustModal.target || amount <= 0 || !userProfile) return;
+
+    if (adjustModal.target.id === userProfile.id) {
+      alert('Você não pode ajustar seus próprios créditos.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const value = Math.abs(amount);
+      const finalAmount = adjustModal.type === 'add' ? value : -value;
+
+      const { error } = await supabase.rpc('adjust_credits', {
+        p_target_user_id: adjustModal.target.id,
+        p_amount: finalAmount,
+        p_admin_id: userProfile.id,
+      });
+
+      if (error) throw error;
+
+      alert('Créditos atualizados!');
+      setAdjustModal({ open: false, type: 'add', target: null });
+      setAmount(0);
+      await loadData();
+      onRefreshProfile();
+    } catch (err: any) {
+      alert(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-10 animate-fade-in max-w-7xl mx-auto">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">
-            DASHBOARD <span className="text-blue-500">REVENDAS</span>
-          </h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Controle de Hierarquia e Créditos</p>
-        </div>
-        <div className="flex gap-4">
-          <button 
-            onClick={loadData}
-            className="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all border border-white/5 text-xl"
-            title="Sincronizar Dados"
+    <div className="p-8 space-y-8">
+      <header className="flex justify-between items-center">
+        <h2 className="text-3xl font-black text-white">Dashboard Revendas</h2>
+        <button
+          onClick={() => setCreateModal(true)}
+          className="bg-blue-600 px-6 py-3 rounded-xl font-bold"
+        >
+          + Novo Revendedor
+        </button>
+      </header>
+
+      {error && <p className="text-red-500">{error}</p>}
+
+      <table className="w-full text-white">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Créditos</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {managedUsers.map(user => (
+            <tr key={user.id}>
+              <td>{user.email}</td>
+              <td>{user.credits ?? 0}</td>
+              <td className="space-x-2">
+                <button onClick={() => setAdjustModal({ open: true, type: 'add', target: user })}>
+                  + Crédito
+                </button>
+                <button onClick={() => setAdjustModal({ open: true, type: 'remove', target: user })}>
+                  - Crédito
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* MODAL CRIAR */}
+      {createModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center">
+          <form
+            onSubmit={handleCreateAccount}
+            className="bg-gray-900 p-8 rounded-xl space-y-4"
           >
-            🔄
-          </button>
-          <button 
-            onClick={() => setCreateModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-[20px] font-black uppercase italic tracking-widest text-[11px] transition-all shadow-xl shadow-blue-600/30 active:scale-95"
-          >
-            ⊕ NOVO REVENDEDOR
-          </button>
-        </div>
-      </div>
-
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <MetricCard title="Créditos em Revendas" value={metrics.totalCreditsInCirculation} unit="Total" icon="💰" color="text-blue-500" bg="bg-blue-600/5" />
-        <MetricCard title={userProfile?.role === 'admin' ? "Total Revendedores" : "Suas Revendas"} value={metrics.totalManaged} unit="Contas" icon="👥" color="text-purple-500" bg="bg-purple-600/5" />
-        <MetricCard title="Clientes Finais" value={metrics.totalCustomers} unit="Ativos" icon="⚡" color="text-emerald-500" bg="bg-emerald-600/5" />
-      </section>
-
-      <section className="bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl overflow-hidden">
-        <header className="p-8 border-b border-gray-800 bg-black/20 flex justify-between items-center">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Gerenciamento de Rede</h3>
-          <span className="text-[8px] font-black text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full uppercase">Sync Online</span>
-        </header>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-black/40 text-[9px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-800">
-              <tr>
-                <th className="px-8 py-5">Identificação</th>
-                <th className="px-8 py-5 text-center">Saldo Atual</th>
-                <th className="px-8 py-5 text-right">Ações de Gestão</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800/50">
-              {managedUsers.length > 0 ? managedUsers.map(user => (
-                <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
-                  <td className="px-8 py-6">
-                    <p className="text-sm font-black text-white uppercase italic tracking-tight">{user.email.split('@')[0]}</p>
-                    <p className="text-[10px] text-gray-600 font-bold">{user.email}</p>
-                  </td>
-                  <td className="px-8 py-6 text-center">
-                    <div className="inline-flex items-center gap-2">
-                       <span className="text-2xl font-black italic text-white tracking-tighter">{user.credits || 0}</span>
-                       <span className="text-[8px] font-black text-blue-500 uppercase">cr</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-6 text-right space-x-2">
-                    <button 
-                      onClick={() => setAdjustModal({ open: true, type: 'add', target: user })}
-                      className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-emerald-500/20"
-                    >
-                      + Crédito
-                    </button>
-                    <button 
-                      onClick={() => setAdjustModal({ open: true, type: 'remove', target: user })}
-                      className="bg-orange-500/10 hover:bg-orange-500 text-orange-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-orange-500/20"
-                    >
-                      - Crédito
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteUser(user.id, user.email)}
-                      className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-red-500/20"
-                      title="Excluir Definitivamente"
-                    >
-                      🗑️
-                    </button>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={3} className="py-24 text-center opacity-20 font-black uppercase text-xs italic tracking-widest text-gray-500">
-                    Sua rede ainda não possui outros revendedores cadastrados.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* MODAL AJUSTE */}
-      {adjustModal.open && adjustModal.target && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setAdjustModal({ ...adjustModal, open: false })}></div>
-          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
-            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">
-              {adjustModal.type === 'add' ? 'ADICIONAR' : 'REMOVER'} <span className={adjustModal.type === 'add' ? 'text-emerald-500' : 'text-orange-500'}>CRÉDITOS</span>
-            </h2>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-10">Alvo: {adjustModal.target.email}</p>
-            <div className="space-y-6">
-              <input 
-                type="number"
-                min="1"
-                value={amount}
-                onChange={e => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                placeholder="Quantidade"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-6 text-4xl font-black text-white focus:border-blue-500 outline-none text-center italic" 
-              />
-              <button 
-                onClick={handleAdjustCredits}
-                disabled={loading || amount <= 0}
-                className={`w-full py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all shadow-xl active:scale-95 disabled:opacity-20 ${
-                  adjustModal.type === 'add' ? 'bg-emerald-600 shadow-emerald-900/20' : 'bg-orange-600 shadow-orange-900/20'
-                }`}
-              >
-                {loading ? 'PROCESSANDO...' : 'CONFIRMAR AJUSTE'}
-              </button>
-            </div>
-          </div>
+            <h3 className="text-xl font-bold">Nova Revenda</h3>
+            <input
+              type="email"
+              required
+              placeholder="Email"
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              className="w-full p-3 rounded bg-black"
+            />
+            <input
+              type="password"
+              required
+              placeholder="Senha"
+              value={formData.password}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+              className="w-full p-3 rounded bg-black"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 py-3 rounded font-bold"
+            >
+              {loading ? 'Criando...' : 'Criar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateModal(false)}
+              className="w-full text-gray-400 text-sm"
+            >
+              Cancelar
+            </button>
+          </form>
         </div>
       )}
 
-      {/* MODAL CADASTRO */}
-      {createModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setCreateModal(false)}></div>
-          <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
-            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">NOVA <span className="text-blue-500">REVENDA</span></h2>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-8">Cadastre um parceiro para sua rede</p>
-            <form onSubmit={handleCreateAccount} className="space-y-4">
-              <input 
-                type="email" 
-                required
-                value={formData.email}
-                onChange={e => setFormData({...formData, email: e.target.value})}
-                placeholder="E-mail de acesso"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
-              />
-              <input 
-                type="password" 
-                required
-                value={formData.password}
-                onChange={e => setFormData({...formData, password: e.target.value})}
-                placeholder="Senha de acesso"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
-              />
-              <button 
-                type="submit"
-                disabled={loading}
-                className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs shadow-xl active:scale-95 disabled:opacity-50"
-              >
-                {loading ? 'CADASTRANDO...' : 'CADASTRAR REVENDEDOR'}
-              </button>
-              <p className="text-[8px] text-gray-600 font-bold uppercase text-center mt-2 italic">Você permanecerá logado em sua conta após o cadastro.</p>
-            </form>
+      {/* MODAL CRÉDITOS */}
+      {adjustModal.open && adjustModal.target && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center">
+          <div className="bg-gray-900 p-8 rounded-xl space-y-4">
+            <h3 className="text-xl font-bold">
+              {adjustModal.type === 'add' ? 'Adicionar' : 'Remover'} Créditos
+            </h3>
+            <input
+              type="number"
+              min={1}
+              value={amount}
+              onChange={e => setAmount(Math.max(1, Number(e.target.value)))}
+              className="w-full p-3 rounded bg-black"
+            />
+            <button
+              onClick={handleAdjustCredits}
+              className="w-full bg-green-600 py-3 rounded font-bold"
+            >
+              Confirmar
+            </button>
+            <button
+              onClick={() => setAdjustModal({ open: false, type: 'add', target: null })}
+              className="w-full text-gray-400 text-sm"
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}
     </div>
   );
 };
-
-const MetricCard = ({ title, value, unit, icon, color, bg }: any) => (
-  <div className={`rounded-[32px] border border-gray-800 p-8 shadow-2xl relative overflow-hidden group ${bg}`}>
-    <div className="relative z-10 space-y-4">
-      <div className="flex justify-between items-center">
-        <span className="text-3xl filter grayscale group-hover:grayscale-0 transition-all duration-500">{icon}</span>
-        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-gray-600">Sync Online</span>
-      </div>
-      <div>
-        <h4 className="text-[9px] font-black uppercase text-gray-500 tracking-widest mb-1">{title}</h4>
-        <p className={`text-4xl font-black italic tracking-tighter ${color}`}>
-          {value}
-          <span className="text-[9px] font-bold text-white/20 ml-2 uppercase italic">{unit}</span>
-        </p>
-      </div>
-    </div>
-  </div>
-);
 
 export default Dashboard;
