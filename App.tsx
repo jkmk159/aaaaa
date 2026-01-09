@@ -31,7 +31,6 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // FIX: Define isPro based on the subscriptionStatus state to resolve scope errors
   const isPro = subscriptionStatus === 'active';
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -39,7 +38,7 @@ const App: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
-    (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
       setSession(session);
       if (session) {
         fetchProfile(session.user.id);
@@ -48,7 +47,7 @@ const App: React.FC = () => {
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setSession(session);
       if (session) {
         fetchProfile(session.user.id);
@@ -71,7 +70,12 @@ const App: React.FC = () => {
         .eq('id', userId)
         .single();
       
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('recursion')) {
+          console.error("ERRO CRÍTICO: Detectada recursão infinita no banco. Aplique o script SQL de correção.");
+        }
+        throw error;
+      }
       setUserProfile(data);
     } catch (e) {
       console.error("Erro ao carregar perfil:", e);
@@ -147,7 +151,6 @@ const App: React.FC = () => {
     }
 
     if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      // FIX: Corrected finalClient.expiration_date to finalClient.expirationDate to match the Client interface.
       const { error } = await supabase.from('clients').upsert({
         id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, 
         password: finalClient.password, phone: finalClient.phone, server_id: finalClient.serverId, 
@@ -199,7 +202,7 @@ const App: React.FC = () => {
       return (
         <div className="p-20 text-center space-y-8 animate-fade-in">
           <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
-          <h2 className="text-3xl font-black mb-4">RECURSO <span className="text-blue-500">PRO</span></h2>
+          <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
           <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
         </div>
       );
