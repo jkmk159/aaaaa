@@ -56,28 +56,41 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
   };
 
   const handleCreateReseller = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      // O Trigger SQL fará o restante do trabalho no banco
-      const { error } = await supabase.auth.signUp({
-        email: resellerForm.email,
-        password: resellerForm.password,
+  e.preventDefault();
+  setLoading(true);
+
+  try {
+    // 1. Se NÃO for admin (ex: vuvu@vuvu), tenta descontar o crédito primeiro via RPC
+    if (userProfile?.role !== 'admin') {
+      const { error: rpcError } = await supabase.rpc('create_sub_reseller', {
+        p_email: resellerForm.email,
+        p_password: resellerForm.password,
+        p_parent_id: userProfile?.id
       });
 
-      if (error) throw error;
-
-      alert('Revendedor cadastrado com sucesso!');
-      setCreateResellerModal(false);
-      setResellerForm({ email: '', password: '' });
-      loadDashboardData();
-    } catch (error: any) {
-      alert('Erro ao cadastrar: ' + error.message);
-    } finally {
-      setLoading(false);
+      if (rpcError) throw new Error(rpcError.message);
     }
-  };
 
+    // 2. Agora cria o usuário no Auth (isso dispara o seu trigger de perfil automaticamente)
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: resellerForm.email,
+      password: resellerForm.password,
+    });
+
+    if (authError) throw authError;
+
+    alert('Revendedor criado! 1 crédito foi descontado do seu saldo.');
+    setCreateResellerModal(false);
+    setResellerForm({ email: '', password: '' });
+    loadDashboardData();
+    onRefreshProfile(); // Atualiza seu saldo na tela
+
+  } catch (error: any) {
+    alert(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
   const handleAdjustCredits = async () => {
     if (!selectedUser || amount <= 0) return;
     setLoading(true);
