@@ -30,7 +30,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, userProfile, onRefres
     if (!userProfile) return;
     setLoading(true);
     try {
-      let query = supabase.from('profiles').select('*').eq('role', 'reseller');
+      let query = supabase
+  .from('profiles')
+  .select('id, email, role, credits, parent_id, created_at')
+  .eq('role', 'reseller');
 
       if (userProfile.role !== 'admin') {
         query = query.eq('parent_id', userProfile.id);
