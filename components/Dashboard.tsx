@@ -155,7 +155,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  // ✅ AJUSTE CRÍTICO — SEM AUTH / SEM INSERT DIRETO
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile) return;
@@ -174,19 +173,19 @@ const Dashboard: React.FC<DashboardProps> = ({
       );
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       if (!data?.success) throw new Error('Falha ao criar revendedor');
 
       setCreateModal(false);
       setFormData({ email: '', password: '' });
       await loadData();
+      alert('Revenda criada com sucesso!');
     } catch (err: any) {
-      alert(err.message);
+      alert('Erro: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
-
-  /* ===================== JSX ORIGINAL (INTACTO) ===================== */
 
   return (
     <div className="p-4 md:p-8 space-y-10 animate-fade-in max-w-7xl mx-auto">
