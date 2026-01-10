@@ -38,37 +38,38 @@ const App: React.FC = () => {
 
   // 2. Efeito de Inicialização
   useEffect(() => {
-    const initSession = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        if (currentSession) {
-          setSession(currentSession);
-          await fetchFullUserData(currentSession.user.id);
-        }
-      } catch (e) {
-        console.error("Erro na sessão inicial:", e);
-      } finally {
-        setAuthLoading(false);
+  const initSession = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setSession(session);
+        await fetchFullUserData(session.user.id);
       }
-    };
+    } catch (e) {
+      console.error("Erro na sessão inicial:", e);
+    } finally {
+      // GARANTE que o loading saia independente do sucesso do perfil
+      setAuthLoading(false);
+    }
+  };
 
-    initSession();
+  initSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession);
-      if (newSession) {
-        await fetchFullUserData(newSession.user.id);
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
-      } else {
-        setCurrentView('login');
-        setUserProfile(null);
-        setSubscriptionStatus('trial');
-        setAuthLoading(false);
-      }
-    });
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    setSession(session);
+    if (session) {
+      await fetchFullUserData(session.user.id);
+      setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+    } else {
+      setCurrentView('login');
+      setUserProfile(null);
+      setSubscriptionStatus('trial');
+      setAuthLoading(false); // Adicionado aqui também
+    }
+  });
 
-    return () => subscription.unsubscribe();
-  }, []);
+  return () => subscription.unsubscribe();
+}, []);
 
   // 3. Busca de Dados do Perfil e Operacionais
   const fetchFullUserData = async (userId: string) => {
