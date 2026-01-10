@@ -23,18 +23,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     try {
-      // Encerra a sessão no Supabase
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      // 1. Encerra a sessão no Supabase
+      await supabase.auth.signOut();
       
-      // Limpeza manual para garantir que nenhum token residual cause re-login automático no F5
+      // 2. Limpeza manual total para garantir que nenhum token residual cause re-login automático
       localStorage.clear();
       sessionStorage.clear();
       
-      // O App.tsx reagirá ao evento SIGNED_OUT, mas forçamos o redirecionamento se necessário
+      // 3. Força o redirecionamento para a raiz, o que reinicia o estado do React
+      window.location.href = '/'; 
     } catch (error) {
       console.error("Erro ao sair:", error);
-      // Fallback radical: limpa tudo e recarrega a página
+      // Fallback radical: limpa tudo e recarrega a página de qualquer forma
       localStorage.clear();
       window.location.href = '/';
     } finally {
