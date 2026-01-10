@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -37,86 +37,73 @@ const App: React.FC = () => {
   const [servers, setServers] = useState<Server[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
 
-  useEffect(() => {
-    // Inicialização da Sessão
-    const initSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setSession(session);
-        await fetchFullUserData(session.user.id);
-      }
-      setAuthLoading(false);
-    };
-
-    initSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session) {
-        await fetchFullUserData(session.user.id);
-        // Só navega para dashboard se estiver na tela de login/signup
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
-      } else {
-        setCurrentView('login');
-        setUserProfile(null);
-        setSubscriptionStatus('trial');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchFullUserData = async (userId: string) => {
+  const fetchFullUserData = useCallback(async (userId: string) => {
     try {
-      // 1. Busca Perfil e Assinatura em uma única chamada (Evita erro 406 e PGRST116)
       const { data: profile, error: pError } = await supabase
         .from('profiles')
         .select('id, email, role, credits, subscription_status')
         .eq('id', userId)
-        .maybeSingle(); // maybeSingle não joga erro se não encontrar
+        .maybeSingle();
 
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
       } else {
-        // Fallback para usuário novo sem perfil criado pelo trigger ainda
-        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
+        setUserProfile({ id: userId, email: '', role: 'reseller', credits: 0 });
       }
-
-      // 2. Busca Dados Operacionais
       await fetchData(userId);
     } catch (e) {
-      console.error("Erro crítico ao carregar dados do usuário:", e);
+      console.error("Erro ao carregar dados:", e);
     }
-  };
+  }, []);
 
-  const handleDemoLogin = (email: string = 'demo@streamhub.com') => {
-    const userId = email === 'jaja@jaja' ? 'master-user-id' : 'demo-user-id';
-    setSession({ user: { email: email, id: userId } });
-    setUserProfile({ id: userId, email: email, role: 'admin', credits: 100 });
-    setSubscriptionStatus('active');
-    setCurrentView('dashboard');
-    fetchData(userId);
-  };
+  useEffect(() => {
+    let isMounted = true;
+
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (isMounted) {
+        if (session) {
+          setSession(session);
+          await fetchFullUserData(session.user.id);
+          setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+        }
+        setAuthLoading(false);
+      }
+    };
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        setSession(newSession);
+        if (newSession) {
+          await fetchFullUserData(newSession.user.id);
+          setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUserProfile(null);
+        setCurrentView('login');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchFullUserData]);
 
   const fetchData = async (userId: string) => {
-    if (userId === 'demo-user-id' || userId === 'master-user-id') {
-      setServers([{ id: '1', name: 'Servidor VIP P2P', url: 'https://jordantv.shop/api/create_user.php', apiKey: 'demo' }]);
-      setPlans([{ id: '1', name: 'Mensal PRO', price: 40, durationValue: 1, durationUnit: 'months' }]);
-      setClients([{
-        id: '1', name: 'Cliente de Teste', username: 'testuser', password: '123', phone: '551199999999',
-        serverId: '1', planId: '1', expirationDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: 'near_expiry'
-      }]);
-      return;
-    }
-
+    if (userId.includes('demo') || userId.includes('master')) return;
     try {
       const [resClients, resServers, resPlans] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
         supabase.from('servers').select('*'),
         supabase.from('plans').select('*')
       ]);
-
       if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
       if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
@@ -126,17 +113,14 @@ const App: React.FC = () => {
           status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
-    } catch (e) { console.error("Erro ao carregar listas operacionais."); }
+    } catch (e) { console.error("Erro fetch data."); }
   };
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
     if (!userId) return;
-
     let finalClient = { ...client };
-    const isNew = !clients.find(c => c.id === client.id);
-
-    if (isNew && userId !== 'demo-user-id' && userId !== 'master-user-id') {
+    if (!clients.find(c => c.id === client.id)) {
       const server = servers.find(s => s.id === client.serverId);
       const plan = plans.find(p => p.id === client.planId);
       if (server?.apiKey && server?.url) {
@@ -145,27 +129,19 @@ const App: React.FC = () => {
           plan: plan?.name.toLowerCase() || 'starter', 
           nome: client.name, whatsapp: client.phone
         });
-        
         if (res.success && res.data?.credenciais) {
-          const creds = res.data.credenciais;
-          if (!finalClient.username) finalClient.username = creds.usuario;
-          if (!finalClient.password) finalClient.password = creds.senha;
-          finalClient.url_m3u = creds.url_m3u;
+          finalClient.username = res.data.credenciais.usuario;
+          finalClient.password = res.data.credenciais.senha;
+          finalClient.url_m3u = res.data.credenciais.url_m3u;
         }
       }
     }
-
-    if (userId !== 'demo-user-id' && userId !== 'master-user-id') {
-      const { error } = await supabase.from('clients').upsert({
-        id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, 
-        password: finalClient.password, phone: finalClient.phone, server_id: finalClient.serverId, 
-        plan_id: finalClient.planId, expiration_date: finalClient.expirationDate, url_m3u: finalClient.url_m3u
-      });
-      if (error) return;
-      fetchData(userId); 
-    } else {
-      setClients(isNew ? [finalClient, ...clients] : clients.map(c => c.id === finalClient.id ? finalClient : c));
-    }
+    await supabase.from('clients').upsert({
+      id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, 
+      password: finalClient.password, phone: finalClient.phone, server_id: finalClient.serverId, 
+      plan_id: finalClient.planId, expiration_date: finalClient.expirationDate, url_m3u: finalClient.url_m3u
+    });
+    fetchData(userId);
   };
 
   function getClientStatus(expirationDate: string): 'active' | 'expired' | 'near_expiry' {
@@ -187,32 +163,24 @@ const App: React.FC = () => {
       newExp = d.toISOString().split('T')[0];
     }
     const userId = session?.user.id;
-    if (userId && userId !== 'demo-user-id' && userId !== 'master-user-id') {
+    if (userId) {
       const server = servers.find(s => s.id === client.serverId);
       if (server?.apiKey && server?.url) await renewRemoteIptvUser(server.url, server.apiKey, client.username, 30);
       await supabase.from('clients').update({ expiration_date: newExp, plan_id: planId || client.planId }).eq('id', clientId);
       fetchData(userId);
-    } else {
-      setClients(clients.map(c => c.id === clientId ? { ...c, expirationDate: newExp!, planId: planId || c.planId, status: getClientStatus(newExp!) } : c));
     }
   };
 
   const renderContent = () => {
-    if (currentView === 'login' || currentView === 'signup') {
-      return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('login')} onDemoLogin={handleDemoLogin} />;
-    }
-
+    if (currentView === 'login' || currentView === 'signup') return <Auth initialIsSignUp={currentView === 'signup'} />;
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
-    if (!isPro && premiumViews.includes(currentView as any)) {
-      return (
-        <div className="p-20 text-center space-y-8 animate-fade-in">
-          <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
-          <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
-          <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
-        </div>
-      );
-    }
-
+    if (!isPro && premiumViews.includes(currentView as any)) return (
+      <div className="p-20 text-center space-y-8 animate-fade-in">
+        <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
+        <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
+        <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
+      </div>
+    );
     switch (currentView) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
       case 'football': return <FootballBanners />;
@@ -233,15 +201,13 @@ const App: React.FC = () => {
     }
   };
 
-  const isAuthView = currentView === 'login' || currentView === 'signup';
-
   if (authLoading) return <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
     <div className="flex min-h-screen bg-[#0b0e14] text-gray-100 overflow-x-hidden selection:bg-blue-500/30">
-      {!isAuthView && session && <Sidebar currentView={currentView as any} onNavigate={setCurrentView as any} userEmail={session?.user.email} isPro={isPro} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />}
-      <main className={`flex-1 min-h-screen overflow-y-auto pb-20 custom-scrollbar ${!isAuthView ? 'w-full' : ''}`}>
-        {!isAuthView && session && (
+      {session && <Sidebar currentView={currentView as any} onNavigate={setCurrentView as any} userEmail={session?.user.email} isPro={isPro} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />}
+      <main className="flex-1 min-h-screen overflow-y-auto pb-20 custom-scrollbar">
+        {session && (
           <header className="h-16 border-b border-gray-800/50 flex items-center justify-between px-4 md:px-8 bg-[#0b0e14]/80 backdrop-blur sticky top-0 z-50">
             <div className="flex items-center space-x-4">
               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-white/5 rounded-lg text-gray-400">
@@ -250,10 +216,8 @@ const App: React.FC = () => {
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ')}</span>
             </div>
             {userProfile && (
-              <div className="flex items-center gap-4">
-                <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
-                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Créditos: {userProfile.credits || 0}</span>
-                </div>
+              <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
+                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Créditos: {userProfile.credits || 0}</span>
               </div>
             )}
           </header>
