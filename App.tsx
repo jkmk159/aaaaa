@@ -72,7 +72,7 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          planId: c.plan_id, // CORRIGIDO: De plan_id para planId para bater com o tipo Client
+          planId: c.plan_id, 
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
@@ -151,7 +151,7 @@ const App: React.FC = () => {
         }
         setAuthLoading(false);
       } else if (event === 'SIGNED_OUT') {
-        // Limpeza total de estados para evitar travamentos ou dados residuais
+        // Limpeza total de estados para garantir reset total da visualização
         setSession(null);
         setUserProfile(null);
         setClients([]);
@@ -166,7 +166,6 @@ const App: React.FC = () => {
     // Timeout de segurança: Se em 5 segundos nada carregar, libera a tela
     const safetyTimer = setTimeout(() => {
       if (isMounted && authLoading) {
-        console.warn("Auth stuck detected. Forcing release.");
         setAuthLoading(false);
       }
     }, 5000);
@@ -176,7 +175,7 @@ const App: React.FC = () => {
       subscription.unsubscribe();
       clearTimeout(safetyTimer);
     };
-  }, [fetchFullUserData]); // Removido authLoading de dependência para evitar loops
+  }, [fetchFullUserData]); 
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -227,7 +226,18 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (currentView === 'login' || currentView === 'signup') return <Auth initialIsSignUp={currentView === 'signup'} />;
+    if (currentView === 'login' || currentView === 'signup') {
+      return (
+        <Auth 
+          initialIsSignUp={currentView === 'signup'} 
+          onDemoLogin={(email) => {
+            setSession({ user: { email: email || 'demo@streamhub.com', id: 'demo-user' } });
+            setUserProfile({ id: 'demo-user', email: email || 'demo@streamhub.com', role: 'admin', credits: 999 });
+            setCurrentView('dashboard');
+          }}
+        />
+      );
+    }
     
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
     if (!isPro && premiumViews.includes(currentView as any)) return (
