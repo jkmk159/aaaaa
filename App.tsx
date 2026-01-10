@@ -73,26 +73,32 @@ const App: React.FC = () => {
 
   // 3. Busca de Dados do Perfil e Operacionais
   const fetchFullUserData = async (userId: string) => {
-    try {
-      const { data: profile, error: pError } = await supabase
-        .from('profiles')
-        .select('id, email, role, credits, subscription_status')
-        .eq('id', userId)
-        .maybeSingle();
+  try {
+    const { data: profile, error: pError } = await supabase
+      .from('profiles')
+      .select('id, email, role, credits, subscription_status')
+      .eq('id', userId)
+      .maybeSingle();
 
-      if (profile) {
-        setUserProfile(profile);
-        setSubscriptionStatus(profile.subscription_status || 'trial');
-      } else {
-        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
-      }
-      await fetchData(userId);
-    } catch (e) {
-      console.error("Erro ao carregar dados:", e);
-    } finally {
-      setAuthLoading(false);
+    if (profile) {
+      setUserProfile(profile);
+      setSubscriptionStatus(profile.subscription_status || 'trial');
+    } else {
+      // Se não achar o perfil, cria um estado básico para não travar
+      setUserProfile({ 
+        id: userId, 
+        email: session?.user?.email || '', 
+        role: 'reseller', 
+        credits: 0 
+      });
     }
-  };
+    await fetchData(userId);
+  } catch (e) {
+    console.error("Erro crítico:", e);
+  } finally {
+    setAuthLoading(false); // Força o fim do loading
+  }
+};
 
   const fetchData = async (userId: string) => {
     try {
