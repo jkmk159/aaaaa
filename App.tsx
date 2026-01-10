@@ -72,29 +72,30 @@ const App: React.FC = () => {
 }, []);
 
   const fetchFullUserData = async (userId: string) => {
-    try {
-      // 1. Busca Perfil e Assinatura em uma única chamada (Evita erro 406 e PGRST116)
-      const { data: profile, error: pError } = await supabase
-        .from('profiles')
-        .select('id, email, role, credits, subscription_status')
-        .eq('id', userId)
-        .maybeSingle(); // maybeSingle não joga erro se não encontrar
+  try {
+    const { data: profile, error: pError } = await supabase
+      .from('profiles')
+      .select('id, email, role, credits, subscription_status')
+      .eq('id', userId)
+      .maybeSingle();
 
-      if (profile) {
-        setUserProfile(profile);
-        setSubscriptionStatus(profile.subscription_status || 'trial');
-      } else {
-        // Fallback para usuário novo sem perfil criado pelo trigger ainda
-        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
-      }
+    if (pError) throw pError;
 
-      // 2. Busca Dados Operacionais
-      await fetchData(userId);
-    } catch (e) {
-      console.error("Erro crítico ao carregar dados do usuário:", e);
+    if (profile) {
+      setUserProfile(profile);
+      setSubscriptionStatus(profile.subscription_status || 'trial');
+    } else {
+      // Usuário sem perfil (ex: trigger do banco ainda não rodou)
+      setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
     }
-  };
-
+    await fetchData(userId);
+  } catch (e) {
+    console.error("Erro ao carregar dados:", e);
+    // Se o erro for de autenticação/permissão, deslogar pode ser a única saída
+  } finally {
+    setAuthLoading(false);
+  }
+};
   const handleDemoLogin = (email: string = 'demo@streamhub.com') => {
     const userId = email === 'jaja@jaja' ? 'master-user-id' : 'demo-user-id';
     setSession({ user: { email: email, id: userId } });
