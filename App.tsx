@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -37,6 +37,45 @@ const App: React.FC = () => {
   const [servers, setServers] = useState<Server[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
 
+  // Referência para evitar múltiplas chamadas simultâneas no init
+  const isInitializing = useRef(false);
+
+  const getClientStatus = (expirationDate: string): 'active' | 'expired' | 'near_expiry' => {
+    const now = new Date();
+    const exp = new Date(expirationDate + 'T00:00:00');
+    const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays < 0 ? 'expired' : diffDays <= 5 ? 'near_expiry' : 'active';
+  };
+
+  const fetchData = useCallback(async (userId: string) => {
+    if (!userId || userId.includes('demo') || userId.includes('master')) return;
+    try {
+      const [resClients, resServers, resPlans] = await Promise.all([
+        supabase.from('clients').select('*').order('created_at', { ascending: false }),
+        supabase.from('servers').select('*'),
+        supabase.from('plans').select('*')
+      ]);
+      
+      if (resServers.data) setServers(resServers.data.map((s: any) => ({ 
+        id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' 
+      })));
+      
+      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ 
+        id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit 
+      })));
+      
+      if (resClients.data) {
+        setClients(resClients.data.map((c: any) => ({
+          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
+          serverId: c.server_id, planId: c.plan_id, expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
+        })));
+      }
+    } catch (e) { 
+      console.error("Erro ao carregar tabelas do gestor:", e); 
+    }
+  }, []);
+
   const fetchFullUserData = useCallback(async (userId: string) => {
     try {
       const { data: profile, error: pError } = await supabase
@@ -49,31 +88,51 @@ const App: React.FC = () => {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
       } else {
-        setUserProfile({ id: userId, email: '', role: 'reseller', credits: 0 });
+        // Fallback para evitar travar se o profile não existir (tabela recém criada)
+        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
       }
+      
+      // Carrega dados adicionais
       await fetchData(userId);
     } catch (e) {
-      console.error("Erro ao carregar dados:", e);
+      console.error("Erro ao carregar dados do perfil:", e);
     }
-  }, []);
+  }, [fetchData, session?.user?.email]);
 
   useEffect(() => {
     let isMounted = true;
 
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (isMounted) {
-        if (session) {
-          setSession(session);
-          await fetchFullUserData(session.user.id);
-          setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+    // Função de inicialização robusta
+    const initializeAuth = async () => {
+      if (isInitializing.current) return;
+      isInitializing.current = true;
+
+      try {
+        // 1. Tenta pegar a sessão atual (JWT no cache)
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (isMounted) {
+          if (currentSession) {
+            setSession(currentSession);
+            await fetchFullUserData(currentSession.user.id);
+            setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+          } else {
+            setCurrentView('login');
+          }
         }
-        setAuthLoading(false);
+      } catch (err) {
+        console.error("Erro na inicialização do Auth:", err);
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+          isInitializing.current = false;
+        }
       }
     };
 
-    init();
+    initializeAuth();
 
+    // 2. Escuta mudanças de estado (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!isMounted) return;
 
@@ -83,38 +142,29 @@ const App: React.FC = () => {
           await fetchFullUserData(newSession.user.id);
           setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
         }
+        setAuthLoading(false);
       } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setUserProfile(null);
         setCurrentView('login');
+        setAuthLoading(false);
       }
     });
+
+    // Timeout de segurança: Se em 5 segundos nada carregar, libera a tela
+    const safetyTimer = setTimeout(() => {
+      if (isMounted && authLoading) {
+        console.warn("Auth stuck detected. Forcing release.");
+        setAuthLoading(false);
+      }
+    }, 5000);
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      clearTimeout(safetyTimer);
     };
-  }, [fetchFullUserData]);
-
-  const fetchData = async (userId: string) => {
-    if (userId.includes('demo') || userId.includes('master')) return;
-    try {
-      const [resClients, resServers, resPlans] = await Promise.all([
-        supabase.from('clients').select('*').order('created_at', { ascending: false }),
-        supabase.from('servers').select('*'),
-        supabase.from('plans').select('*')
-      ]);
-      if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
-      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
-      if (resClients.data) {
-        setClients(resClients.data.map((c: any) => ({
-          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, planId: c.plan_id, expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
-        })));
-      }
-    } catch (e) { console.error("Erro fetch data."); }
-  };
+  }, [fetchFullUserData]); // Removido authLoading de dependência para evitar loops
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -144,13 +194,6 @@ const App: React.FC = () => {
     fetchData(userId);
   };
 
-  function getClientStatus(expirationDate: string): 'active' | 'expired' | 'near_expiry' {
-    const now = new Date();
-    const exp = new Date(expirationDate + 'T00:00:00');
-    const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays < 0 ? 'expired' : diffDays <= 5 ? 'near_expiry' : 'active';
-  }
-
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
     const client = clients.find(c => c.id === clientId);
     if (!client) return;
@@ -173,6 +216,7 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (currentView === 'login' || currentView === 'signup') return <Auth initialIsSignUp={currentView === 'signup'} />;
+    
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
     if (!isPro && premiumViews.includes(currentView as any)) return (
       <div className="p-20 text-center space-y-8 animate-fade-in">
@@ -181,6 +225,7 @@ const App: React.FC = () => {
         <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
       </div>
     );
+
     switch (currentView) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
       case 'football': return <FootballBanners />;
@@ -201,7 +246,15 @@ const App: React.FC = () => {
     }
   };
 
-  if (authLoading) return <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (authLoading) return (
+    <div className="min-h-screen bg-[#0b0e14] flex flex-col items-center justify-center gap-6">
+      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="flex flex-col items-center gap-2">
+        <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-xl">Stream<span className="text-white">HUB</span></h2>
+        <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em] animate-pulse">Sincronizando Sessão...</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen bg-[#0b0e14] text-gray-100 overflow-x-hidden selection:bg-blue-500/30">
