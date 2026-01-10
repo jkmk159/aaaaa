@@ -40,15 +40,15 @@ const App: React.FC = () => {
   useEffect(() => {
   const initSession = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setSession(session);
-        await fetchFullUserData(session.user.id);
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession) {
+        setSession(currentSession);
+        await fetchFullUserData(currentSession.user.id);
       }
     } catch (e) {
       console.error("Erro na sessão inicial:", e);
     } finally {
-      // GARANTE que o loading saia independente do sucesso do perfil
+      // Força o fim do loading mesmo se houver erro ou sessão nula
       setAuthLoading(false);
     }
   };
@@ -64,7 +64,8 @@ const App: React.FC = () => {
       setCurrentView('login');
       setUserProfile(null);
       setSubscriptionStatus('trial');
-      setAuthLoading(false); // Adicionado aqui também
+      // ADICIONE ESTA LINHA: Garante que o spinner suma na tela de login
+      setAuthLoading(false); 
     }
   });
 
