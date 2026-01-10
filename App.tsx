@@ -38,33 +38,38 @@ const App: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
-    // Inicialização da Sessão
-    const initSession = async () => {
+  const initSession = async () => {
+    try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setSession(session);
         await fetchFullUserData(session.user.id);
       }
-      setAuthLoading(false);
-    };
+    } catch (e) {
+      console.error("Erro na sessão inicial:", e);
+    } finally {
+      // GARANTE que o loading pare, independente de erro ou sucesso
+      setAuthLoading(false); 
+    }
+  };
 
-    initSession();
+  initSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session) {
-        await fetchFullUserData(session.user.id);
-        // Só navega para dashboard se estiver na tela de login/signup
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
-      } else {
-        setCurrentView('login');
-        setUserProfile(null);
-        setSubscriptionStatus('trial');
-      }
-    });
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    setSession(session);
+    if (session) {
+      await fetchFullUserData(session.user.id);
+      setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+    } else {
+      setCurrentView('login');
+      setUserProfile(null);
+      setSubscriptionStatus('trial');
+      setAuthLoading(false); // Garante parada no logout
+    }
+  });
 
-    return () => subscription.unsubscribe();
-  }, []);
+  return () => subscription.unsubscribe();
+}, []);
 
   const fetchFullUserData = async (userId: string) => {
     try {
