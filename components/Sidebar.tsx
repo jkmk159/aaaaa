@@ -24,23 +24,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     setIsLoggingOut(true);
     
     try {
-      // 1. Tenta encerrar a sessão no Supabase de forma local primeiro para ser instantâneo
-      await supabase.auth.signOut({ scope: 'local' });
-      
-      // 2. Limpeza profunda de todos os armazenamentos para evitar persistência de sessão demo ou real
+      // 1. Limpeza local imediata (Evita persistência em logins manuais/demo)
       localStorage.clear();
       sessionStorage.clear();
+
+      // 2. Tenta encerrar a sessão no Supabase (ignorando erros se for sessão manual)
+      await supabase.auth.signOut().catch(() => {});
       
-      // 3. Pequeno delay apenas para o usuário ver o feedback antes do reload
-      setTimeout(() => {
-        window.location.href = '/'; 
-      }, 300);
-      
+      // 3. Força o recarregamento da página para a raiz, o que limpa toda a memória do React
+      window.location.href = '/'; 
     } catch (error) {
-      console.error("Erro ao sair:", error);
-      // Fallback radical: limpa tudo e força o recarregamento da página
-      localStorage.clear();
-      sessionStorage.clear();
+      console.error("Erro crítico ao sair:", error);
       window.location.href = '/';
     }
   };
