@@ -226,6 +226,11 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    // PROTEÇÃO: Se houver sessão, nunca renderiza a tela de login/signup
+    if (session && (currentView === 'login' || currentView === 'signup')) {
+      return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
+    }
+
     if (currentView === 'login' || currentView === 'signup') {
       return (
         <Auth 
