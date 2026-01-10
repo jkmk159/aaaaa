@@ -139,7 +139,7 @@ const FootballBanners: React.FC = () => {
 
                 return (
                   <div key={idx} className="relative w-full" style={{ height: '68px' }}>
-                    <div className="absolute top-[-7px] left-[-75] w-full text-center">
+                    <div className="absolute top-[-12px] left-[-90] w-full text-center">
                       <span className="text-white text-[7px] font-black uppercase italic tracking-[0.4em] opacity-80">
                         {hasData ? g.league.name : `CAMPEONATO NACIONAL`}
                       </span>
@@ -165,7 +165,7 @@ const FootballBanners: React.FC = () => {
                     <div className="absolute left-[330px] top-[3px]">
                       {hasData ? <img src={g.teams.away.logo} className="w-[38px] h-[38px] object-contain" crossOrigin="anonymous" /> : <div className="w-9 h-9 rounded-full bg-white/5" />}
                     </div>
-                    <div className="absolute top-[40px] left-[-90] w-full flex justify-center">
+                    <div className="absolute top-[40px] left-[-120] w-full flex justify-center">
                       <span className="text-white font-black text-[6.5px] uppercase tracking-widest italic flex items-center gap-1">
                         📺 {hasData ? g.broadcast : 'SEM TRANSMISSÃO'}
                       </span>
