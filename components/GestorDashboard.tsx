@@ -24,7 +24,7 @@ const GestorDashboard: React.FC<Props> = ({ clients, servers, onNavigate, onRene
     <div className="p-8 space-y-8 animate-fade-in">
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-black italic tracking-tighter">BEM-VINDO AO <span className="text-blue-500">PAINEL</span></h2>
+          <h2 className="text-3xl font-black italic tracking-tighter uppercase">DASH<span className="text-blue-500">BOARD</span></h2>
           <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">Visão geral do seu negócio de IPTV</p>
         </div>
         <div className="bg-blue-600/10 px-6 py-3 rounded-2xl border border-blue-500/20">
