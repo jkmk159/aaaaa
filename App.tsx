@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
@@ -38,64 +37,61 @@ const App: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
-  const initSession = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setSession(session);
-        await fetchFullUserData(session.user.id);
+    const initSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setSession(session);
+          await fetchFullUserData(session.user.id);
+        }
+      } catch (e) {
+        console.error("Erro na sessão inicial:", e);
+      } finally {
+        setAuthLoading(false);
       }
+    };
+
+    initSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      if (session) {
+        await fetchFullUserData(session.user.id);
+        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+      } else {
+        setCurrentView('login');
+        setUserProfile(null);
+        setSubscriptionStatus('trial');
+        setAuthLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchFullUserData = async (userId: string) => {
+    try {
+      const { data: profile, error: pError } = await supabase
+        .from('profiles')
+        .select('id, email, role, credits, subscription_status')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (profile) {
+        setUserProfile(profile);
+        setSubscriptionStatus(profile.subscription_status || 'trial');
+      } else {
+        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
+      }
+
+      await fetchData(userId);
     } catch (e) {
-      console.error("Erro na sessão inicial:", e);
+      console.error("Erro crítico ao carregar dados do usuário:", e);
     } finally {
-      // GARANTE que o loading pare, independente de erro ou sucesso
-      setAuthLoading(false); 
+      setAuthLoading(false); // Correção: garante que o loading pare sempre
     }
   };
 
-  initSession();
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-    setSession(session);
-    if (session) {
-      await fetchFullUserData(session.user.id);
-      setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
-    } else {
-      setCurrentView('login');
-      setUserProfile(null);
-      setSubscriptionStatus('trial');
-      setAuthLoading(false); // Garante parada no logout
-    }
-  });
-
-  return () => subscription.unsubscribe();
-}, []);
-
-  const fetchFullUserData = async (userId: string) => {
-  try {
-    const { data: profile, error: pError } = await supabase
-      .from('profiles')
-      .select('id, email, role, credits, subscription_status')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (pError) throw pError;
-
-    if (profile) {
-      setUserProfile(profile);
-      setSubscriptionStatus(profile.subscription_status || 'trial');
-    } else {
-      // Usuário sem perfil (ex: trigger do banco ainda não rodou)
-      setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
-    }
-    await fetchData(userId);
-  } catch (e) {
-    console.error("Erro ao carregar dados:", e);
-    // Se o erro for de autenticação/permissão, deslogar pode ser a única saída
-  } finally {
-    setAuthLoading(false);
-  }
-};
   const handleDemoLogin = (email: string = 'demo@streamhub.com') => {
     const userId = email === 'jaja@jaja' ? 'master-user-id' : 'demo-user-id';
     setSession({ user: { email: email, id: userId } });
@@ -165,7 +161,7 @@ const App: React.FC = () => {
       const { error } = await supabase.from('clients').upsert({
         id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, 
         password: finalClient.password, phone: finalClient.phone, server_id: finalClient.serverId, 
-        plan_id: finalClient.planId, expiration_date: finalClient.expirationDate, url_m3u: finalClient.url_m3u
+        plan_id: finalClient.planId, expiration_date: finalClient.expiration_date, url_m3u: finalClient.url_m3u
       });
       if (error) return;
       fetchData(userId); 
