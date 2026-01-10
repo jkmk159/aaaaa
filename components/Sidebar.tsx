@@ -17,9 +17,29 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
   const [isAdsOpen, setIsAdsOpen] = useState(true);
   const [isBeOwnerOpen, setIsBeOwnerOpen] = useState(true);
   const [isGestorOpen, setIsGestorOpen] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
-    await (supabase.auth as any).signOut();
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      // Encerra a sessão no Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // Limpeza manual para garantir que nenhum token residual cause re-login automático no F5
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // O App.tsx reagirá ao evento SIGNED_OUT, mas forçamos o redirecionamento se necessário
+    } catch (error) {
+      console.error("Erro ao sair:", error);
+      // Fallback radical: limpa tudo e recarrega a página
+      localStorage.clear();
+      window.location.href = '/';
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const handleNav = (view: ViewType) => {
@@ -175,9 +195,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
           </div>
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all border border-red-500/10"
+            disabled={isLoggingOut}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all border border-red-500/10 disabled:opacity-50"
           >
-            <span>🚪</span> Sair da Conta
+            <span>🚪</span> {isLoggingOut ? 'Saindo...' : 'Sair da Conta'}
           </button>
         </div>
       </aside>
