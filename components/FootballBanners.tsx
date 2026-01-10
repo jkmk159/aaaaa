@@ -126,7 +126,7 @@ const FootballBanners: React.FC = () => {
           <div ref={bannerRef} className="w-[540px] h-[675px] bg-black relative overflow-hidden shadow-2xl">
             <img src={selectedTheme.url} className="absolute inset-0 w-full h-full object-cover z-0" crossOrigin="anonymous" alt="BG" />
             
-            <div className="absolute top-[20px] left-[0] w-full text-center z-10">
+            <div className="absolute top-[20px] left-0 w-full text-center z-10">
               <span className="text-white font-black text-[42px] tracking-tighter uppercase drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)] leading-none">
                 {dateStr}
               </span>
@@ -139,7 +139,8 @@ const FootballBanners: React.FC = () => {
 
                 return (
                   <div key={idx} className="relative w-full" style={{ height: '68px' }}>
-                    <div className="absolute top-[-12px] left-[-90] w-full text-center">
+                    {/* CORREÇÃO: left-0 e w-full para centralização correta do texto do campeonato */}
+                    <div className="absolute top-[-7px] left-[-75px] w-full text-center">
                       <span className="text-white text-[7px] font-black uppercase italic tracking-[0.4em] opacity-80">
                         {hasData ? g.league.name : `CAMPEONATO NACIONAL`}
                       </span>
@@ -165,7 +166,8 @@ const FootballBanners: React.FC = () => {
                     <div className="absolute left-[330px] top-[3px]">
                       {hasData ? <img src={g.teams.away.logo} className="w-[38px] h-[38px] object-contain" crossOrigin="anonymous" /> : <div className="w-9 h-9 rounded-full bg-white/5" />}
                     </div>
-                    <div className="absolute top-[40px] left-[-120] w-full flex justify-center">
+                    {/* CORREÇÃO: left-0 e w-full para centralização correta da transmissão */}
+                    <div className="absolute top-[40px] left-[-80px] w-full flex justify-center">
                       <span className="text-white font-black text-[6.5px] uppercase tracking-widest italic flex items-center gap-1">
                         📺 {hasData ? g.broadcast : 'SEM TRANSMISSÃO'}
                       </span>
