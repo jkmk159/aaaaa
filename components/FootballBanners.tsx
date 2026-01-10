@@ -140,7 +140,7 @@ const FootballBanners: React.FC = () => {
                 return (
                   <div key={idx} className="relative w-full" style={{ height: '68px' }}>
                     {/* CORREÇÃO: left-0 e w-full para centralização correta do texto do campeonato */}
-                    <div className="absolute top-[-7px] left-[-75px] w-full text-center">
+                    <div className="absolute top-[-9px] left-[-75px] w-full text-center">
                       <span className="text-white text-[7px] font-black uppercase italic tracking-[0.4em] opacity-80">
                         {hasData ? g.league.name : `CAMPEONATO NACIONAL`}
                       </span>
