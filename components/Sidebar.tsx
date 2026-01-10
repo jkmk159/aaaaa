@@ -22,23 +22,26 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
   const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
+    
     try {
-      // 1. Encerra a sessão no Supabase
-      await supabase.auth.signOut();
+      // 1. Tenta encerrar a sessão no Supabase de forma local primeiro para ser instantâneo
+      await supabase.auth.signOut({ scope: 'local' });
       
-      // 2. Limpeza manual total para garantir que nenhum token residual cause re-login automático
+      // 2. Limpeza profunda de todos os armazenamentos para evitar persistência de sessão demo ou real
       localStorage.clear();
       sessionStorage.clear();
       
-      // 3. Força o redirecionamento para a raiz, o que reinicia o estado do React
-      window.location.href = '/'; 
+      // 3. Pequeno delay apenas para o usuário ver o feedback antes do reload
+      setTimeout(() => {
+        window.location.href = '/'; 
+      }, 300);
+      
     } catch (error) {
       console.error("Erro ao sair:", error);
-      // Fallback radical: limpa tudo e recarrega a página de qualquer forma
+      // Fallback radical: limpa tudo e força o recarregamento da página
       localStorage.clear();
+      sessionStorage.clear();
       window.location.href = '/';
-    } finally {
-      setIsLoggingOut(false);
     }
   };
 
@@ -181,10 +184,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
         <div className="p-4 border-t border-gray-800 bg-[#0f121a] space-y-3">
           <div className="flex items-center space-x-3 bg-black/30 p-3 rounded-2xl border border-white/5">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black italic shadow-lg text-xs text-white shrink-0 ${isPro ? 'bg-gradient-to-br from-blue-500 to-blue-700' : 'bg-gray-700'}`}>
-              {userEmail?.[0].toUpperCase()}
+              {userEmail?.[0]?.toUpperCase() || 'U'}
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-[10px] font-black uppercase tracking-tight leading-none truncate text-white">{userEmail?.split('@')[0]}</p>
+              <p className="text-[10px] font-black uppercase tracking-tight leading-none truncate text-white">{userEmail?.split('@')[0] || 'Usuário'}</p>
               <p className={`text-[8px] font-bold uppercase tracking-widest mt-1 ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>
                 {isPro ? 'STATUS PRO' : 'CONTA TRIAL'}
               </p>
