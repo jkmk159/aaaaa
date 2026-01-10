@@ -66,9 +66,16 @@ const App: React.FC = () => {
       
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, plan_id: c.plan_id, expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
+          id: c.id, 
+          name: c.name, 
+          username: c.username, 
+          password: c.password, 
+          phone: c.phone,
+          serverId: c.server_id, 
+          planId: c.plan_id, // CORRIGIDO: De plan_id para planId para bater com o tipo Client
+          expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), 
+          url_m3u: c.url_m3u
         })));
       }
     } catch (e) { 
