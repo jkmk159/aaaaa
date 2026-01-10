@@ -47,10 +47,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     setError(null);
 
     try {
+      // Importante: .neq('id', userProfile.id) impede que você veja a si mesmo na lista
       let query = supabase
         .from('profiles')
         .select('id, email, role, credits, parent_id, updated_at')
-        .neq('id', userProfile.id)
+        .neq('id', userProfile.id) 
         .order('updated_at', { ascending: false });
 
       if (userProfile.role !== 'admin') {
@@ -92,42 +93,29 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleAdjustCredits = async () => {
     if (!adjustModal.target || !userProfile) return;
 
-    if (adjustModal.target.id === userProfile.id) {
-      alert('Você não pode ajustar seus próprios créditos.');
-      return;
-    }
-
     const value = Math.abs(amount);
     if (value <= 0) return;
-
-    if (
-      userProfile.role !== 'admin' &&
-      adjustModal.type === 'add' &&
-      (userProfile.credits || 0) < value
-    ) {
-      alert('Saldo insuficiente.');
-      return;
-    }
 
     setLoading(true);
 
     try {
-      const finalAmount =
-        adjustModal.type === 'add' ? value : -value;
+      // A lógica de débito do Pai agora acontece DENTRO do banco via RPC
+      const finalAmount = adjustModal.type === 'add' ? value : -value;
 
-      const { error } = await supabase.rpc('adjust_credits', {
+      const { error: rpcError } = await supabase.rpc('adjust_credits', {
         p_target_user_id: adjustModal.target.id,
         p_amount: finalAmount,
         p_admin_id: userProfile.id
       });
 
-      if (error) throw error;
+      if (rpcError) throw rpcError;
 
       setAdjustModal({ open: false, type: 'add', target: null });
       setAmount(0);
+      alert("Créditos ajustados com sucesso!");
       await Promise.all([loadData(), onRefreshProfile()]);
     } catch (err: any) {
-      alert(err.message);
+      alert("Falha no ajuste: " + (err.message || "Saldo insuficiente"));
     } finally {
       setLoading(false);
     }
@@ -137,16 +125,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     e.preventDefault();
     if (!userProfile) return;
 
-    if (userProfile.role !== 'admin' && (userProfile.credits || 0) <= 0) {
-      alert('Você precisa de créditos para criar revendas.');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // CHAMADA PARA A EDGE FUNCTION (EVITA O LOGIN AUTOMÁTICO)
-      const { data, error } = await supabase.functions.invoke('create_reseller', {
+      const { data, error: funcError } = await supabase.functions.invoke('create_reseller', {
         body: { 
           email: formData.email, 
           password: formData.password,
@@ -154,13 +136,13 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
       });
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (funcError) throw funcError;
+      if (data?.error) throw new Error(data.error);
 
-      alert("Revendedor criado com sucesso via Edge Function!");
+      alert("Revendedor criado! 1 crédito foi debitado da sua conta.");
       setCreateModal(false);
       setFormData({ email: '', password: '' });
-      await loadData();
+      await Promise.all([loadData(), onRefreshProfile()]);
     } catch (err: any) {
       alert("Erro ao criar revenda: " + err.message);
     } finally {
@@ -183,13 +165,13 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-10 animate-fade-in max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 space-y-10 animate-gradient-slow max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">
-            DASHBOARD <span className="text-blue-500">REVENDAS</span>
+            GESTÃO <span className="text-blue-500">REDE</span>
           </h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Gestão de Rede via Edge Functions</p>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Saldo Atual: {userProfile?.credits || 0} créditos</p>
         </div>
         <div className="flex gap-4">
           <button 
@@ -203,15 +185,15 @@ const Dashboard: React.FC<DashboardProps> = ({
             onClick={() => setCreateModal(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-[20px] font-black uppercase italic tracking-widest text-[11px] transition-all shadow-xl shadow-blue-600/30 active:scale-95"
           >
-            ⊕ NOVO REVENDEDOR
+            ⊕ CRIAR REVENDA (1 CR)
           </button>
         </div>
       </div>
 
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <MetricCard title="Créditos em Revendas" value={metrics.totalCreditsInCirculation} unit="Total" icon="💰" color="text-blue-500" bg="bg-blue-600/5" />
-        <MetricCard title={userProfile?.role === 'admin' ? "Total Revendedores" : "Suas Revendas"} value={metrics.totalManaged} unit="Contas" icon="👥" color="text-purple-500" bg="bg-purple-600/5" />
-        <MetricCard title="Clientes Finais" value={metrics.totalCustomers} unit="Ativos" icon="⚡" color="text-emerald-500" bg="bg-emerald-600/5" />
+        <MetricCard title="Saldo em Circulação" value={metrics.totalCreditsInCirculation} unit="Créditos" icon="💰" color="text-blue-500" bg="bg-blue-600/5" />
+        <MetricCard title="Sua Rede" value={metrics.totalManaged} unit="Parceiros" icon="👥" color="text-purple-500" bg="bg-purple-600/5" />
+        <MetricCard title="Assinantes Ativos" value={metrics.totalCustomers} unit="Clientes" icon="⚡" color="text-emerald-500" bg="bg-emerald-600/5" />
       </section>
 
       <section className="bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl overflow-hidden">
@@ -221,7 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <tr>
                 <th className="px-8 py-5">Identificação</th>
                 <th className="px-8 py-5 text-center">Saldo Atual</th>
-                <th className="px-8 py-5 text-right">Ações</th>
+                <th className="px-8 py-5 text-right">Ações de Saldo</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
@@ -242,18 +224,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                       onClick={() => setAdjustModal({ open: true, type: 'add', target: user })}
                       className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
                     >
-                      + Crédito
+                      Enviar
                     </button>
                     <button 
                       onClick={() => setAdjustModal({ open: true, type: 'remove', target: user })}
                       className="bg-orange-500/10 hover:bg-orange-500 text-orange-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
                     >
-                      - Crédito
+                      Estornar
                     </button>
                     <button onClick={() => handleDeleteUser(user.id, user.email)} className="text-red-500/30 hover:text-red-500 p-2">🗑️</button>
                   </td>
                 </tr>
               ))}
+              {managedUsers.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-8 py-20 text-center text-gray-700 uppercase font-black text-xs tracking-widest italic opacity-20">Nenhuma revenda cadastrada em sua rede</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -265,15 +252,16 @@ const Dashboard: React.FC<DashboardProps> = ({
           <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setAdjustModal({ ...adjustModal, open: false })}></div>
           <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
             <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter">
-              {adjustModal.type === 'add' ? 'ADICIONAR' : 'REMOVER'} <span className={adjustModal.type === 'add' ? 'text-emerald-500' : 'text-orange-500'}>CRÉDITOS</span>
+              {adjustModal.type === 'add' ? 'ENVIAR' : 'ESTORNAR'} <span className={adjustModal.type === 'add' ? 'text-emerald-500' : 'text-orange-500'}>SALDO</span>
             </h2>
-            <div className="space-y-6 mt-8">
+            <p className="text-[10px] text-gray-500 font-bold uppercase mb-6">Para: {adjustModal.target.email}</p>
+            <div className="space-y-6">
               <input 
                 type="number"
                 min="1"
                 value={amount}
                 onChange={e => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-6 text-4xl font-black text-white focus:border-blue-500 outline-none text-center italic" 
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-6 text-4xl font-black text-white focus:border-blue-500 outline-none text-center italic shadow-inner" 
               />
               <button 
                 onClick={handleAdjustCredits}
@@ -282,7 +270,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   adjustModal.type === 'add' ? 'bg-emerald-600 shadow-emerald-900/20' : 'bg-orange-600 shadow-orange-900/20'
                 }`}
               >
-                {loading ? 'PROCESSANDO...' : 'CONFIRMAR'}
+                {loading ? 'Sincronizando Banco...' : 'Confirmar Operação'}
               </button>
             </div>
           </div>
@@ -294,31 +282,31 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setCreateModal(false)}></div>
           <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
-            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">NOVA <span className="text-blue-500">REVENDA</span></h2>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-8">Criando através de Secure Edge Function</p>
+            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">NOVO <span className="text-blue-500">PARCEIRO</span></h2>
+            <p className="text-[10px] text-orange-500 font-black uppercase tracking-widest mb-8">⚠️ Custo: 1 Crédito da sua conta</p>
             <form onSubmit={handleCreateAccount} className="space-y-4">
               <input 
                 type="email" 
                 required
                 value={formData.email}
                 onChange={e => setFormData({...formData, email: e.target.value})}
-                placeholder="E-mail"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
+                placeholder="E-mail da Revenda"
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none shadow-inner" 
               />
               <input 
                 type="password" 
                 required
                 value={formData.password}
                 onChange={e => setFormData({...formData, password: e.target.value})}
-                placeholder="Senha"
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
+                placeholder="Senha de Acesso"
+                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none shadow-inner" 
               />
               <button 
                 type="submit"
                 disabled={loading}
                 className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs shadow-xl active:scale-95 disabled:opacity-50"
               >
-                {loading ? 'CRIANDO...' : 'CADASTRAR AGORA'}
+                {loading ? 'Validando Saldo...' : 'Finalizar Cadastro'}
               </button>
             </form>
           </div>
