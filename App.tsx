@@ -38,47 +38,55 @@ const App: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
-      setSession(session);
+    // Inicialização da Sessão
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        fetchProfile(session.user.id);
-        fetchData(session.user.id);
+        setSession(session);
+        await fetchFullUserData(session.user.id);
       }
       setAuthLoading(false);
-    });
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+    initSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session) {
-        fetchProfile(session.user.id);
-        fetchData(session.user.id);
-        setCurrentView('dashboard');
+        await fetchFullUserData(session.user.id);
+        // Só navega para dashboard se estiver na tela de login/signup
+        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
       } else {
         setCurrentView('login');
         setUserProfile(null);
+        setSubscriptionStatus('trial');
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchFullUserData = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // 1. Busca Perfil e Assinatura em uma única chamada (Evita erro 406 e PGRST116)
+      const { data: profile, error: pError } = await supabase
         .from('profiles')
-        .select('id, email, role, credits')
+        .select('id, email, role, credits, subscription_status')
         .eq('id', userId)
-        .single();
-      
-      if (error) {
-        if (error.message.includes('recursion')) {
-          console.error("ERRO CRÍTICO: Detectada recursão infinita no banco. Aplique o script SQL de correção.");
-        }
-        throw error;
+        .maybeSingle(); // maybeSingle não joga erro se não encontrar
+
+      if (profile) {
+        setUserProfile(profile);
+        setSubscriptionStatus(profile.subscription_status || 'trial');
+      } else {
+        // Fallback para usuário novo sem perfil criado pelo trigger ainda
+        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
       }
-      setUserProfile(data);
+
+      // 2. Busca Dados Operacionais
+      await fetchData(userId);
     } catch (e) {
-      console.error("Erro ao carregar perfil:", e);
+      console.error("Erro crítico ao carregar dados do usuário:", e);
     }
   };
 
@@ -103,9 +111,6 @@ const App: React.FC = () => {
     }
 
     try {
-      const { data: profile } = await supabase.from('profiles').select('subscription_status').eq('id', userId).single();
-      if (profile) setSubscriptionStatus(profile.subscription_status as any);
-
       const [resClients, resServers, resPlans] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
         supabase.from('servers').select('*'),
@@ -121,7 +126,7 @@ const App: React.FC = () => {
           status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
-    } catch (e) { console.error("Erro ao carregar dados."); }
+    } catch (e) { console.error("Erro ao carregar listas operacionais."); }
   };
 
   const handleSaveClient = async (client: Client) => {
@@ -209,12 +214,12 @@ const App: React.FC = () => {
     }
 
     switch (currentView) {
-      case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchProfile(session.user.id)} />;
+      case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
       case 'football': return <FootballBanners />;
       case 'movie': return <MovieBanners />;
       case 'series': return <SeriesBanners />;
       case 'logo': return <LogoGenerator />;
-      case 'pricing': return <Pricing userEmail={session!.user.email} isPro={isPro} />;
+      case 'pricing': return <Pricing userEmail={session?.user?.email} isPro={isPro} />;
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
@@ -224,7 +229,7 @@ const App: React.FC = () => {
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
-      default: return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchProfile(session.user.id)} />;
+      default: return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
     }
   };
 
@@ -247,7 +252,7 @@ const App: React.FC = () => {
             {userProfile && (
               <div className="flex items-center gap-4">
                 <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
-                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Créditos: {userProfile.credits}</span>
+                  <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Créditos: {userProfile.credits || 0}</span>
                 </div>
               </div>
             )}
