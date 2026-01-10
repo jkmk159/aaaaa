@@ -196,7 +196,7 @@ const FootballBanners: React.FC = () => {
                   <div className="absolute top-[255px] left-0 w-full z-20">
                     {chunk.map((g, idx) => (
                       <div key={idx} className="relative w-full" style={{ height: '68px' }}>
-                        <div className="absolute top-[-7px] left-[-75px] w-full text-center">
+                        <div className="absolute top-[-9px] left-[-75px] w-full text-center">
                           <span className="text-white text-[7px] font-black uppercase italic tracking-[0.4em] opacity-80">
                             {g.league.name}
                           </span>
@@ -222,7 +222,7 @@ const FootballBanners: React.FC = () => {
                         <div className="absolute left-[330px] top-[3px]">
                           <img src={g.teams.away.logo} className="w-[38px] h-[38px] object-contain" crossOrigin="anonymous" />
                         </div>
-                        <div className="absolute top-[40px] left-[-80px] w-full flex justify-center">
+                        <div className="absolute top-[45px] left-[-80px] w-full flex justify-center">
                           <span className="text-white font-black text-[6.5px] uppercase tracking-widest italic flex items-center gap-1">
                             📺 {g.broadcast}
                           </span>
