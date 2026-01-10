@@ -1,14 +1,7 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ViewType, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl =
-  process.env.VITE_SUPABASE_URL ||
-  'https://pyjdlfbxgcutqzfqcpcd.supabase.co';
-
-const supabaseAnonKey =
-  process.env.VITE_SUPABASE_ANON_KEY || '';
 
 interface DashboardProps {
   onNavigate: (view: ViewType) => void;
@@ -99,7 +92,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleAdjustCredits = async () => {
     if (!adjustModal.target || !userProfile) return;
 
-    // 🔒 bloqueio absoluto
     if (adjustModal.target.id === userProfile.id) {
       alert('Você não pode ajustar seus próprios créditos.');
       return;
@@ -141,39 +133,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleDeleteUser = async (userId: string, email: string) => {
-  if (!window.confirm(`Deseja excluir permanentemente a revenda "${email}"?`)) return;
-
-  setLoading(true);
-  try {
-    const { error } = await supabase.functions.invoke("delete_user", {
-      body: {
-        target_user_id: userId,
-        requester_id: userProfile?.id
-      }
-    });
-
-    if (error) throw error;
-
-    alert("Usuário removido definitivamente.");
-    await loadData();
-
-  } catch (err: any) {
-    alert("Erro ao excluir: " + err.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile) return;
 
-    if (
-      userProfile.role !== 'admin' &&
-      (userProfile.credits || 0) <= 0
-    ) {
+    if (userProfile.role !== 'admin' && (userProfile.credits || 0) <= 0) {
       alert('Você precisa de créditos para criar revendas.');
       return;
     }
@@ -181,36 +145,35 @@ const Dashboard: React.FC<DashboardProps> = ({
     setLoading(true);
 
     try {
-      const tempSupabase = createClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        { auth: { persistSession: false } }
-      );
-
-      const { data, error } =
-        await tempSupabase.auth.signUp({
-          email: formData.email,
-          password: formData.password
-        });
+      // CHAMADA PARA A EDGE FUNCTION (EVITA O LOGIN AUTOMÁTICO)
+      const { data, error } = await supabase.functions.invoke('create_reseller', {
+        body: { 
+          email: formData.email, 
+          password: formData.password,
+          parent_id: userProfile.id
+        }
+      });
 
       if (error) throw error;
+      if (data.error) throw new Error(data.error);
 
-      if (data.user) {
-        const { error: pError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            email: formData.email,
-            role: 'reseller',
-            parent_id: userProfile.id,
-            credits: 0
-          });
-
-        if (pError) throw pError;
-      }
-
+      alert("Revendedor criado com sucesso via Edge Function!");
       setCreateModal(false);
       setFormData({ email: '', password: '' });
+      await loadData();
+    } catch (err: any) {
+      alert("Erro ao criar revenda: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, email: string) => {
+    if (!window.confirm(`Excluir permanentemente "${email}"?`)) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase.from('profiles').delete().eq('id', userId);
+      if (error) throw error;
       await loadData();
     } catch (err: any) {
       alert(err.message);
@@ -219,8 +182,6 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  /* ===================== JSX ORIGINAL (INTACTO) ===================== */
-
   return (
     <div className="p-4 md:p-8 space-y-10 animate-fade-in max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -228,13 +189,13 @@ const Dashboard: React.FC<DashboardProps> = ({
           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">
             DASHBOARD <span className="text-blue-500">REVENDAS</span>
           </h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Controle de Hierarquia e Créditos</p>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Gestão de Rede via Edge Functions</p>
         </div>
         <div className="flex gap-4">
           <button 
             onClick={loadData}
             className="p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all border border-white/5 text-xl"
-            title="Sincronizar Dados"
+            title="Sincronizar"
           >
             🔄
           </button>
@@ -254,22 +215,17 @@ const Dashboard: React.FC<DashboardProps> = ({
       </section>
 
       <section className="bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl overflow-hidden">
-        <header className="p-8 border-b border-gray-800 bg-black/20 flex justify-between items-center">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Gerenciamento de Rede</h3>
-          <span className="text-[8px] font-black text-blue-500 bg-blue-500/10 px-3 py-1 rounded-full uppercase">Sync Online</span>
-        </header>
-
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-black/40 text-[9px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-800">
               <tr>
                 <th className="px-8 py-5">Identificação</th>
                 <th className="px-8 py-5 text-center">Saldo Atual</th>
-                <th className="px-8 py-5 text-right">Ações de Gestão</th>
+                <th className="px-8 py-5 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/50">
-              {managedUsers.length > 0 ? managedUsers.map(user => (
+              {managedUsers.map(user => (
                 <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
                   <td className="px-8 py-6">
                     <p className="text-sm font-black text-white uppercase italic tracking-tight">{user.email.split('@')[0]}</p>
@@ -284,32 +240,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <td className="px-8 py-6 text-right space-x-2">
                     <button 
                       onClick={() => setAdjustModal({ open: true, type: 'add', target: user })}
-                      className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-emerald-500/20"
+                      className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
                     >
                       + Crédito
                     </button>
                     <button 
                       onClick={() => setAdjustModal({ open: true, type: 'remove', target: user })}
-                      className="bg-orange-500/10 hover:bg-orange-500 text-orange-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-orange-500/20"
+                      className="bg-orange-500/10 hover:bg-orange-500 text-orange-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
                     >
                       - Crédito
                     </button>
-                    <button 
-                      onClick={() => handleDeleteUser(user.id, user.email)}
-                      className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-red-500/20"
-                      title="Excluir Definitivamente"
-                    >
-                      🗑️
-                    </button>
+                    <button onClick={() => handleDeleteUser(user.id, user.email)} className="text-red-500/30 hover:text-red-500 p-2">🗑️</button>
                   </td>
                 </tr>
-              )) : (
-                <tr>
-                  <td colSpan={3} className="py-24 text-center opacity-20 font-black uppercase text-xs italic tracking-widest text-gray-500">
-                    Sua rede ainda não possui outros revendedores cadastrados.
-                  </td>
-                </tr>
-              )}
+              ))}
             </tbody>
           </table>
         </div>
@@ -320,27 +264,25 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setAdjustModal({ ...adjustModal, open: false })}></div>
           <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
-            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">
+            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter">
               {adjustModal.type === 'add' ? 'ADICIONAR' : 'REMOVER'} <span className={adjustModal.type === 'add' ? 'text-emerald-500' : 'text-orange-500'}>CRÉDITOS</span>
             </h2>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-10">Alvo: {adjustModal.target.email}</p>
-            <div className="space-y-6">
+            <div className="space-y-6 mt-8">
               <input 
                 type="number"
                 min="1"
                 value={amount}
                 onChange={e => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                placeholder="Quantidade"
                 className="w-full bg-black/40 border border-gray-700 rounded-2xl p-6 text-4xl font-black text-white focus:border-blue-500 outline-none text-center italic" 
               />
               <button 
                 onClick={handleAdjustCredits}
                 disabled={loading || amount <= 0}
-                className={`w-full py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all shadow-xl active:scale-95 disabled:opacity-20 ${
+                className={`w-full py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all shadow-xl ${
                   adjustModal.type === 'add' ? 'bg-emerald-600 shadow-emerald-900/20' : 'bg-orange-600 shadow-orange-900/20'
                 }`}
               >
-                {loading ? 'PROCESSANDO...' : 'CONFIRMAR AJUSTE'}
+                {loading ? 'PROCESSANDO...' : 'CONFIRMAR'}
               </button>
             </div>
           </div>
@@ -353,14 +295,14 @@ const Dashboard: React.FC<DashboardProps> = ({
           <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setCreateModal(false)}></div>
           <div className="relative w-full max-w-md bg-[#141824] rounded-[40px] border border-gray-800 shadow-3xl p-10 animate-fade-in">
             <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter leading-none">NOVA <span className="text-blue-500">REVENDA</span></h2>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-8">Cadastre um parceiro para sua rede</p>
+            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-8">Criando através de Secure Edge Function</p>
             <form onSubmit={handleCreateAccount} className="space-y-4">
               <input 
                 type="email" 
                 required
                 value={formData.email}
                 onChange={e => setFormData({...formData, email: e.target.value})}
-                placeholder="E-mail de acesso"
+                placeholder="E-mail"
                 className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
               />
               <input 
@@ -368,7 +310,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 required
                 value={formData.password}
                 onChange={e => setFormData({...formData, password: e.target.value})}
-                placeholder="Senha de acesso"
+                placeholder="Senha"
                 className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white focus:border-blue-500 outline-none" 
               />
               <button 
@@ -376,9 +318,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 disabled={loading}
                 className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase italic tracking-widest text-xs shadow-xl active:scale-95 disabled:opacity-50"
               >
-                {loading ? 'CADASTRANDO...' : 'CADASTRAR REVENDEDOR'}
+                {loading ? 'CRIANDO...' : 'CADASTRAR AGORA'}
               </button>
-              <p className="text-[8px] text-gray-600 font-bold uppercase text-center mt-2 italic">Você permanecerá logado em sua conta após o cadastro.</p>
             </form>
           </div>
         </div>
@@ -392,7 +333,6 @@ const MetricCard = ({ title, value, unit, icon, color, bg }: any) => (
     <div className="relative z-10 space-y-4">
       <div className="flex justify-between items-center">
         <span className="text-3xl filter grayscale group-hover:grayscale-0 transition-all duration-500">{icon}</span>
-        <span className="text-[8px] font-black uppercase tracking-[0.3em] text-gray-600">Sync Online</span>
       </div>
       <div>
         <h4 className="text-[9px] font-black uppercase text-gray-500 tracking-widest mb-1">{title}</h4>
