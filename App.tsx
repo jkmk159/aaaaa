@@ -67,7 +67,7 @@ const App: React.FC = () => {
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
           id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, planId: c.plan_id, expirationDate: c.expiration_date,
+          serverId: c.server_id, plan_id: c.plan_id, expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
@@ -144,8 +144,13 @@ const App: React.FC = () => {
         }
         setAuthLoading(false);
       } else if (event === 'SIGNED_OUT') {
+        // Limpeza total de estados para evitar travamentos ou dados residuais
         setSession(null);
         setUserProfile(null);
+        setClients([]);
+        setServers([]);
+        setPlans([]);
+        setSubscriptionStatus('trial');
         setCurrentView('login');
         setAuthLoading(false);
       }
