@@ -141,24 +141,30 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const handleDeleteUser = async (id: string, email: string) => {
-    if (!confirm(`Deseja excluir "${email}"?`)) return;
+  const handleDeleteUser = async (userId: string, email: string) => {
+  if (!window.confirm(`Deseja excluir permanentemente a revenda "${email}"?`)) return;
 
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', id);
+  setLoading(true);
+  try {
+    const { error } = await supabase.functions.invoke("delete_user", {
+      body: {
+        target_user_id: userId,
+        requester_id: userProfile?.id
+      }
+    });
 
-      if (error) throw error;
-      await loadData();
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (error) throw error;
+
+    alert("Usuário removido definitivamente.");
+    await loadData();
+
+  } catch (err: any) {
+    alert("Erro ao excluir: " + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
