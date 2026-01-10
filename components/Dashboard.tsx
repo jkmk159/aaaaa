@@ -1,14 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ViewType, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl =
-  process.env.VITE_SUPABASE_URL ||
-  'https://pyjdlfbxgcutqzfqcpcd.supabase.co';
-
-const supabaseAnonKey =
-  process.env.VITE_SUPABASE_ANON_KEY || '';
 
 interface DashboardProps {
   onNavigate: (view: ViewType) => void;
@@ -99,7 +91,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleAdjustCredits = async () => {
     if (!adjustModal.target || !userProfile) return;
 
-    // 🔒 bloqueio absoluto
     if (adjustModal.target.id === userProfile.id) {
       alert('Você não pode ajustar seus próprios créditos.');
       return;
@@ -142,72 +133,48 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleDeleteUser = async (userId: string, email: string) => {
-  if (!window.confirm(`Deseja excluir permanentemente a revenda "${email}"?`)) return;
+    if (!window.confirm(`Deseja excluir permanentemente a revenda "${email}"?`)) return;
 
-  setLoading(true);
-  try {
-    const { error } = await supabase.functions.invoke("delete_user", {
-      body: {
-        target_user_id: userId,
-        requester_id: userProfile?.id
-      }
-    });
+    setLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke('delete_user', {
+        body: {
+          target_user_id: userId,
+          requester_id: userProfile?.id
+        }
+      });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    alert("Usuário removido definitivamente.");
-    await loadData();
+      alert('Usuário removido definitivamente.');
+      await loadData();
+    } catch (err: any) {
+      alert('Erro ao excluir: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  } catch (err: any) {
-    alert("Erro ao excluir: " + err.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
+  // ✅ AJUSTE CRÍTICO — SEM AUTH / SEM INSERT DIRETO
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userProfile) return;
 
-    if (
-      userProfile.role !== 'admin' &&
-      (userProfile.credits || 0) <= 0
-    ) {
-      alert('Você precisa de créditos para criar revendas.');
-      return;
-    }
-
     setLoading(true);
-
     try {
-      const tempSupabase = createClient(
-        supabaseUrl,
-        supabaseAnonKey,
-        { auth: { persistSession: false } }
+      const { data, error } = await supabase.functions.invoke(
+        'create_reseller',
+        {
+          body: {
+            email: formData.email,
+            password: formData.password,
+            parent_id: userProfile.id
+          }
+        }
       );
 
-      const { data, error } =
-        await tempSupabase.auth.signUp({
-          email: formData.email,
-          password: formData.password
-        });
-
       if (error) throw error;
-
-      if (data.user) {
-        const { error: pError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            email: formData.email,
-            role: 'reseller',
-            parent_id: userProfile.id,
-            credits: 0
-          });
-
-        if (pError) throw pError;
-      }
+      if (!data?.success) throw new Error('Falha ao criar revendedor');
 
       setCreateModal(false);
       setFormData({ email: '', password: '' });
