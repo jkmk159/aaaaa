@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Define se é PRO baseado no estado atualizado
   const isPro = subscriptionStatus === 'active';
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -46,41 +47,40 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async (userId: string) => {
-  if (!userId || userId.includes('demo') || userId.includes('master')) return;
-  try {
-    const [resClients, resServers, resPlans] = await Promise.all([
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      supabase.from('servers').select('*'),
-      supabase.from('plans').select('*')
-    ]);
-    
-    if (resServers.data) setServers(resServers.data.map((s: any) => ({ 
-      id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' 
-    })));
-    
-    if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ 
-      id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit 
-    })));
-    
-    if (resClients.data) {
-      setClients(resClients.data.map((c: any) => ({
-        id: c.id, 
-        name: c.name, 
-        username: c.username, 
-        password: c.password, 
-        phone: c.phone,
-        serverId: c.server_id, 
-        // CORREÇÃO AQUI: Mudando de plan_id para planId
-        planId: c.plan_id, 
-        expirationDate: c.expiration_date,
-        status: getClientStatus(c.expiration_date), 
-        url_m3u: c.url_m3u
+    if (!userId || userId.includes('demo') || userId.includes('master')) return;
+    try {
+      const [resClients, resServers, resPlans] = await Promise.all([
+        supabase.from('clients').select('*').order('created_at', { ascending: false }),
+        supabase.from('servers').select('*'),
+        supabase.from('plans').select('*')
+      ]);
+      
+      if (resServers.data) setServers(resServers.data.map((s: any) => ({ 
+        id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' 
       })));
+      
+      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ 
+        id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit 
+      })));
+      
+      if (resClients.data) {
+        setClients(resClients.data.map((c: any) => ({
+          id: c.id, 
+          name: c.name, 
+          username: c.username, 
+          password: c.password, 
+          phone: c.phone,
+          serverId: c.server_id, 
+          planId: c.plan_id, 
+          expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), 
+          url_m3u: c.url_m3u
+        })));
+      }
+    } catch (e) { 
+      console.error("Erro ao carregar tabelas do gestor:", e); 
     }
-  } catch (e) { 
-    console.error("Erro ao carregar tabelas do gestor:", e); 
-  }
-}, [getClientStatus]);
+  }, [getClientStatus]);
 
   const fetchFullUserData = useCallback(async (userId: string) => {
     try {
@@ -92,16 +92,19 @@ const App: React.FC = () => {
 
       if (profile) {
         setUserProfile(profile);
-        setSubscriptionStatus(profile.subscription_status || 'trial');
+        // Garante que o status seja atualizado corretamente do banco
+        const status = profile.subscription_status || 'trial';
+        setSubscriptionStatus(status as any);
+        console.log("Status da assinatura carregado:", status);
       } else {
         setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
+        setSubscriptionStatus('trial');
       }
       
       await fetchData(userId);
     } catch (e) {
       console.error("Erro ao carregar dados do perfil:", e);
     } finally {
-      // Força a liberação da tela mesmo se o perfil falhar
       setAuthLoading(false);
     }
   }, [fetchData, session?.user?.email]);
@@ -145,9 +148,9 @@ const App: React.FC = () => {
         setSession(newSession);
         if (newSession) {
           await fetchFullUserData(newSession.user.id);
-          setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+        } else {
+          setAuthLoading(false);
         }
-        setAuthLoading(false);
       } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setUserProfile(null);
@@ -162,10 +165,9 @@ const App: React.FC = () => {
 
     const safetyTimer = setTimeout(() => {
       if (isMounted && authLoading) {
-        console.warn("Liberando tela pelo Timer de Segurança.");
         setAuthLoading(false);
       }
-    }, 5000);
+    }, 6000);
 
     return () => {
       isMounted = false;
@@ -211,7 +213,7 @@ const App: React.FC = () => {
       const d = new Date(client.expirationDate + 'T00:00:00') < new Date() ? new Date() : new Date(client.expirationDate + 'T00:00:00');
       if (plan.durationUnit === 'months') d.setMonth(d.getMonth() + plan.durationValue);
       else d.setDate(d.getDate() + plan.durationValue);
-      newExp = d.toISOString().split('T')[0];
+      newExp = d.toISOString().split('T00:00:00')[0];
     }
     const userId = session?.user.id;
     if (userId) {
@@ -230,6 +232,7 @@ const App: React.FC = () => {
       <div className="p-20 text-center space-y-8 animate-fade-in">
         <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
         <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
+        <p className="text-gray-400 max-w-md mx-auto">Este recurso está disponível apenas para assinantes do plano Profissional.</p>
         <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
       </div>
     );
@@ -246,7 +249,7 @@ const App: React.FC = () => {
       case 'sales-copy': return <SalesCopy />;
       case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={val => {}} onDeleteServer={val => {}} />;
-      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={val => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
+      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={setClients} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
