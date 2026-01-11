@@ -22,24 +22,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
   const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
-    
     try {
-      // 1. Limpeza agressiva do armazenamento local (especialmente tokens do Supabase)
       localStorage.removeItem('supabase.auth.token');
       localStorage.clear();
       sessionStorage.clear();
-      
-      // 2. Limpeza de cookies de sessão
       document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
       });
-
-      // 3. Chamada de saída no servidor
       await supabase.auth.signOut();
-      
-      // 4. Redirecionamento forçado para a raiz (limpa o estado do React)
       window.location.assign('/'); 
     } catch (error) {
       console.error("Erro ao sair:", error);
@@ -47,9 +37,38 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     }
   };
 
-  const handleNav = (view: ViewType) => {
-    onNavigate(view);
+  const handleNav = (view: ViewType, restricted: boolean = true) => {
+    if (restricted && !isPro) {
+      onNavigate('pricing');
+    } else {
+      onNavigate(view);
+    }
     if (onClose) onClose();
+  };
+
+  const NavItem = ({ item, restricted = true }: { item: any, restricted?: boolean }) => {
+    const isActive = currentView === item.id;
+    const locked = restricted && !isPro;
+
+    return (
+      <button 
+        key={item.id} 
+        onClick={() => handleNav(item.id as ViewType, restricted)} 
+        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all group ${
+          isActive 
+            ? 'bg-blue-600 text-white' 
+            : 'text-gray-500 hover:bg-gray-800/50 hover:text-white'
+        } ${locked ? 'opacity-60 grayscale' : ''}`}
+      >
+        <div className="flex items-center">
+          <span className="mr-3 text-base">{item.icon}</span> 
+          {item.label}
+        </div>
+        {locked && (
+          <span className="text-[7px] font-black bg-blue-500/10 text-blue-500 border border-blue-500/20 px-1.5 py-0.5 rounded-md uppercase tracking-widest">PRO</span>
+        )}
+      </button>
+    );
   };
 
   const generatorItems = [
@@ -82,16 +101,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
   return (
     <>
       {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] md:hidden animate-fade-in"
-          onClick={onClose}
-        ></div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] md:hidden animate-fade-in" onClick={onClose}></div>
       )}
 
-      <aside className={`
-        fixed md:sticky top-0 left-0 h-screen w-72 bg-[#141824] border-r border-gray-800 flex flex-col z-[80] transition-transform duration-300 ease-in-out
-        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
+      <aside className={`fixed md:sticky top-0 left-0 h-screen w-72 bg-[#141824] border-r border-gray-800 flex flex-col z-[80] transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="p-8 flex justify-between items-center">
           <h1 className="text-2xl font-extrabold text-blue-500 tracking-tighter italic">Stream<span className="text-white">HUB</span></h1>
           <button onClick={onClose} className="md:hidden text-gray-500 hover:text-white">
@@ -101,7 +114,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
 
         <nav className="flex-1 px-4 py-2 flex flex-col overflow-y-auto custom-scrollbar space-y-2">
           <button
-            onClick={() => handleNav('dashboard')}
+            onClick={() => handleNav('dashboard', false)}
             className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-bold transition-all ${
               currentView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
@@ -117,11 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
             </button>
             <div className={`overflow-hidden transition-all duration-300 ${isGestorOpen ? 'max-h-[500px] mt-2' : 'max-h-0'}`}>
               <div className="pl-6 space-y-1 border-l-2 border-blue-600/30 ml-6">
-                {gestorItems.map((item) => (
-                  <button key={item.id} onClick={() => handleNav(item.id as ViewType)} className={`w-full flex items-center px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${currentView === item.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-800/50 hover:text-white'}`}>
-                    <span className="mr-3 text-base">{item.icon}</span> {item.label}
-                  </button>
-                ))}
+                {gestorItems.map((item) => <NavItem key={item.id} item={item} />)}
               </div>
             </div>
           </div>
@@ -134,11 +143,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
             </button>
             <div className={`overflow-hidden transition-all duration-300 ${isGeneratorsOpen ? 'max-h-[350px] mt-2' : 'max-h-0'}`}>
               <div className="pl-6 space-y-1 border-l-2 border-gray-800 ml-6">
-                {generatorItems.map((item) => (
-                  <button key={item.id} onClick={() => handleNav(item.id as ViewType)} className={`w-full flex items-center px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${currentView === item.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-800/50 hover:text-white'}`}>
-                    <span className="mr-3 text-base">{item.icon}</span> {item.label}
-                  </button>
-                ))}
+                {generatorItems.map((item) => <NavItem key={item.id} item={item} />)}
               </div>
             </div>
           </div>
@@ -151,33 +156,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
             </button>
             <div className={`overflow-hidden transition-all duration-300 ${isAdsOpen ? 'max-h-[350px] mt-2' : 'max-h-0'}`}>
               <div className="pl-6 space-y-1 border-l-2 border-gray-800 ml-6">
-                 {adItems.map((item) => (
-                  <button key={item.id} onClick={() => handleNav(item.id as ViewType)} className={`w-full flex items-center px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${currentView === item.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-800/50 hover:text-white'}`}>
-                    <span className="mr-3 text-base">{item.icon}</span> {item.label}
-                  </button>
-                ))}
+                 {adItems.map((item) => <NavItem key={item.id} item={item} />)}
               </div>
             </div>
           </div>
 
-          {/* SEJA DONO */}
-          <div>
-            <button onClick={() => setIsBeOwnerOpen(!isBeOwnerOpen)} className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold text-gray-400 hover:bg-gray-800 transition-all">
-              <div className="flex items-center"><span className="mr-3 text-lg">👑</span> Seja Dono</div>
-              <span className={`transition-transform duration-300 ${isBeOwnerOpen ? 'rotate-180' : ''} text-[10px]`}>▼</span>
-            </button>
-            <div className={`overflow-hidden transition-all duration-300 ${isBeOwnerOpen ? 'max-h-[350px] mt-2' : 'max-h-0'}`}>
-              <div className="pl-6 space-y-1 border-l-2 border-gray-800 ml-6">
-                {ownerItems.map((item) => (
-                  <button key={item.id} onClick={() => handleNav(item.id as ViewType)} className={`w-full flex items-center px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${currentView === item.id ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-800/50 hover:text-white'}`}>
-                    <span className="mr-3 text-base">{item.icon}</span> {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <button onClick={() => handleNav('pricing')} className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentView === 'pricing' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+          <button onClick={() => handleNav('pricing', false)} className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-bold transition-all ${currentView === 'pricing' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
             <span className="mr-3 text-lg">💎</span> Assinatura
           </button>
         </nav>
@@ -194,14 +178,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
               </p>
             </div>
           </div>
-          <div className="px-2 py-1 bg-blue-500/5 rounded-lg border border-blue-500/10 text-center">
-             <p className="text-[7px] font-black text-blue-500/50 uppercase tracking-[0.2em]">Build v2.1.0 - AI Otimizada</p>
-          </div>
-          <button 
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all border border-red-500/10 disabled:opacity-50"
-          >
+          <button onClick={handleLogout} disabled={isLoggingOut} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all border border-red-500/10 disabled:opacity-50">
             <span>🚪</span> {isLoggingOut ? 'Saindo...' : 'Sair da Conta'}
           </button>
         </div>
