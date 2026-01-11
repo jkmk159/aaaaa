@@ -35,7 +35,7 @@ const GestorDashboard: React.FC<GestorDashboardProps> = ({
         <div className="bg-blue-600/10 px-6 py-3 rounded-2xl border border-blue-500/20 min-w-[200px]">
           <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Faturamento Est. Mensal</p>
           <p className="text-xl font-black text-white">
-            {loading ? '---' : `R$ ${estimatedRevenue.toLocaleString('pt-BR')}`}
+            {loading ? <span className="animate-pulse">Calculando...</span> : `R$ ${estimatedRevenue.toLocaleString('pt-BR')}`}
           </p>
         </div>
       </header>
@@ -64,7 +64,7 @@ const GestorDashboard: React.FC<GestorDashboardProps> = ({
                     <p className="text-[10px] text-gray-500 uppercase font-black">{servers.find(s => s.id === c.serverId)?.name || 'Sem Servidor'}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-mono text-yellow-500 font-bold">{new Date(c.expirationDate).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-xs font-mono text-yellow-500 font-bold">{new Date(c.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
                     <button onClick={() => onNavigate('gestor-template-ai')} className="text-[9px] font-black text-blue-500 uppercase mt-1">COBRAR VIA WHATSAPP</button>
                   </div>
                 </div>
