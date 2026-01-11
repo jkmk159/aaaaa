@@ -101,47 +101,55 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   useEffect(() => {
-    // Configura o ouvinte de estado único para evitar loops
+    // 1. Verificação inicial imediata para evitar o loop do loading infinito
+    const initSession = async () => {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (initialSession) {
+          setSession(initialSession);
+          await fetchFullUserData(initialSession.user.id);
+          setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
+        }
+      } catch (err) {
+        console.error("Erro ao restaurar sessão:", err);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    initSession();
+
+    // 2. Ouvinte de mudanças de estado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (newSession) {
         setSession(newSession);
-        // Só tenta buscar dados se ainda não temos o perfil ou se foi um login novo
-        if (!userProfile || event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN' || !userProfile) {
           await fetchFullUserData(newSession.user.id);
         }
-        
-        // Redireciona para o dashboard apenas se estiver em telas de auth
         setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
       } else {
         setSession(null);
         setUserProfile(null);
-        // Se deslogado, volta para landing, a menos que esteja no meio de um processo de login
         setCurrentView(prev => (prev === 'login' || prev === 'signup') ? prev : 'landing');
       }
       setAuthLoading(false);
     });
 
-    // Timeout de segurança: Se em 10 segundos nada acontecer, libera o loading para não travar o usuário
-    const safetyTimeout = setTimeout(() => {
-      setAuthLoading(false);
-    }, 10000);
-
     return () => {
       subscription.unsubscribe();
-      clearTimeout(safetyTimeout);
     };
-  }, [fetchFullUserData, userProfile?.id]); 
+  }, [fetchFullUserData]); 
 
-  // Listener para re-sincronizar dados quando voltar para a aba
+  // Sincronização ao voltar para a aba
   useEffect(() => {
     const handleFocus = () => {
-      if (session?.user?.id) {
+      if (session?.user?.id && !authLoading) {
         fetchFullUserData(session.user.id);
       }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [session?.user?.id, fetchFullUserData]);
+  }, [session?.user?.id, fetchFullUserData, authLoading]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
