@@ -69,7 +69,7 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          plan_id: c.plan_id, 
+          planId: c.plan_id, // CORREÇÃO: Mapeado de plan_id para planId para satisfazer o tipo Client
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
@@ -126,7 +126,6 @@ const App: React.FC = () => {
       }
     });
 
-    // Recarregar dados quando a aba ganha foco novamente (evita dashboard zerado)
     const handleFocus = () => {
       if (session?.user?.id) {
         fetchFullUserData(session.user.id);
