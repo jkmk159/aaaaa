@@ -46,33 +46,41 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async (userId: string) => {
-    if (!userId || userId.includes('demo') || userId.includes('master')) return;
-    try {
-      const [resClients, resServers, resPlans] = await Promise.all([
-        supabase.from('clients').select('*').order('created_at', { ascending: false }),
-        supabase.from('servers').select('*'),
-        supabase.from('plans').select('*')
-      ]);
-      
-      if (resServers.data) setServers(resServers.data.map((s: any) => ({ 
-        id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' 
+  if (!userId || userId.includes('demo') || userId.includes('master')) return;
+  try {
+    const [resClients, resServers, resPlans] = await Promise.all([
+      supabase.from('clients').select('*').order('created_at', { ascending: false }),
+      supabase.from('servers').select('*'),
+      supabase.from('plans').select('*')
+    ]);
+    
+    if (resServers.data) setServers(resServers.data.map((s: any) => ({ 
+      id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' 
+    })));
+    
+    if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ 
+      id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit 
+    })));
+    
+    if (resClients.data) {
+      setClients(resClients.data.map((c: any) => ({
+        id: c.id, 
+        name: c.name, 
+        username: c.username, 
+        password: c.password, 
+        phone: c.phone,
+        serverId: c.server_id, 
+        // CORREÇÃO AQUI: Mudando de plan_id para planId
+        planId: c.plan_id, 
+        expirationDate: c.expiration_date,
+        status: getClientStatus(c.expiration_date), 
+        url_m3u: c.url_m3u
       })));
-      
-      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ 
-        id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit 
-      })));
-      
-      if (resClients.data) {
-        setClients(resClients.data.map((c: any) => ({
-          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, plan_id: c.plan_id, expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
-        })));
-      }
-    } catch (e) { 
-      console.error("Erro ao carregar tabelas do gestor:", e); 
     }
-  }, []);
+  } catch (e) { 
+    console.error("Erro ao carregar tabelas do gestor:", e); 
+  }
+}, [getClientStatus]);
 
   const fetchFullUserData = useCallback(async (userId: string) => {
     try {
