@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
@@ -126,10 +125,18 @@ const App: React.FC = () => {
           if (event === 'SIGNED_IN') setCurrentView('dashboard');
         }
       } else {
+        // CORREÇÃO PARA O CONGELAMENTO: 
+        // Se a sessão for destruída (Sign Out), limpamos os estados e resetamos o app
         setSession(null);
         setUserProfile(null);
         setSubscriptionStatus('trial');
         setCurrentView('login');
+        
+        // Se o evento foi de saída, forçamos um reload para limpar a memória do navegador
+        if (event === 'SIGNED_OUT') {
+           localStorage.clear();
+           window.location.href = '/'; 
+        }
       }
       setAuthLoading(false);
     });
@@ -146,6 +153,8 @@ const App: React.FC = () => {
       window.removeEventListener('focus', handleFocus);
     };
   }, [fetchFullUserData, session?.user?.id]);
+
+  // Restante das funções (handleSaveClient, renewClient, renderContent) permanecem iguais...
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
