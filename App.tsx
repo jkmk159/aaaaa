@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -22,6 +23,13 @@ import GestorPlanos from './components/GestorPlanos';
 import { supabase } from './lib/supabase';
 import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
+// Lista de visualizações que EXIGEM status PRO
+const PRO_VIEWS: ViewType[] = [
+  'football', 'movie', 'series', 'logo', 'editor', 'ad-analyzer', 'sales-copy',
+  'gestor-dashboard', 'gestor-servidores', 'gestor-clientes', 'gestor-calendario', 
+  'gestor-planos', 'gestor-template-ai'
+];
+
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
   const [session, setSession] = useState<any | null>(null);
@@ -31,6 +39,7 @@ const App: React.FC = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  const isMasterMode = useRef(false);
   const isPro = subscriptionStatus === 'active';
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -45,7 +54,7 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async (userId: string) => {
-    if (!userId) return;
+    if (!userId || isMasterMode.current) return;
     setDataLoading(true);
     try {
       const [resClients, resServers, resPlans] = await Promise.all([
@@ -54,59 +63,34 @@ const App: React.FC = () => {
         supabase.from('plans').select('*')
       ]);
       
-      if (resServers.data) setServers(resServers.data.map((s: any) => ({ 
-        id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' 
-      })));
-      
-      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ 
-        id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit 
-      })));
-      
+      if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
+      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id, 
-          name: c.name, 
-          username: c.username, 
-          password: c.password, 
-          phone: c.phone,
-          serverId: c.server_id, 
-          planId: c.plan_id,
-          expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), 
-          url_m3u: c.url_m3u
+          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
+          serverId: c.server_id, planId: c.plan_id, expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
-    } catch (e) { 
-      console.error("Erro ao carregar dados:", e); 
-    } finally {
-      setDataLoading(false);
-    }
+    } catch (e) { console.error("Erro ao carregar dados:", e); } finally { setDataLoading(false); }
   }, []);
 
   const fetchFullUserData = useCallback(async (userId: string) => {
+    if (isMasterMode.current) return;
     try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('id, email, role, subscription_status')
-        .eq('id', userId)
-        .maybeSingle();
-
+      const { data: profile } = await supabase.from('profiles').select('id, email, role, subscription_status').eq('id', userId).maybeSingle();
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
       }
-      
       await fetchData(userId);
-    } catch (e) {
-      console.error("Erro ao carregar perfil:", e);
-    }
+    } catch (e) { console.error("Erro ao carregar perfil:", e); }
   }, [fetchData]);
 
   useEffect(() => {
     const initAuth = async () => {
       setAuthLoading(true);
       const { data: { session: initialSession } } = await supabase.auth.getSession();
-      
       if (initialSession) {
         setSession(initialSession);
         await fetchFullUserData(initialSession.user.id);
@@ -114,68 +98,32 @@ const App: React.FC = () => {
       }
       setAuthLoading(false);
     };
-
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (isMasterMode.current && event !== 'SIGNED_OUT') return;
       if (newSession) {
         setSession(newSession);
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await fetchFullUserData(newSession.user.id);
           if (event === 'SIGNED_IN') setCurrentView('dashboard');
         }
-      } else {
-        // CORREÇÃO PARA O CONGELAMENTO: 
-        // Se a sessão for destruída (Sign Out), limpamos os estados e resetamos o app
+      } else if (event === 'SIGNED_OUT') {
+        isMasterMode.current = false;
         setSession(null);
         setUserProfile(null);
         setSubscriptionStatus('trial');
         setCurrentView('login');
-        
-        // Se o evento foi de saída, forçamos um reload para limpar a memória do navegador
-        if (event === 'SIGNED_OUT') {
-           localStorage.clear();
-           window.location.href = '/'; 
-        }
       }
       setAuthLoading(false);
     });
-
-    const handleFocus = () => {
-      if (session?.user?.id) {
-        fetchFullUserData(session.user.id);
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      subscription.unsubscribe();
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [fetchFullUserData, session?.user?.id]);
-
-  // Restante das funções (handleSaveClient, renewClient, renderContent) permanecem iguais...
+    return () => subscription.unsubscribe();
+  }, [fetchFullUserData]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
-    if (!userId) return;
+    if (!userId || isMasterMode.current) return;
     let finalClient = { ...client };
-    if (!clients.find(c => c.id === client.id)) {
-      const server = servers.find(s => s.id === client.serverId);
-      const plan = plans.find(p => p.id === client.planId);
-      if (server?.apiKey && server?.url) {
-        const res = await createRemoteIptvUser(server.url, server.apiKey, {
-          username: client.username, password: client.password, 
-          plan: plan?.name.toLowerCase() || 'starter', 
-          nome: client.name, whatsapp: client.phone
-        });
-        if (res.success && res.data?.credenciais) {
-          finalClient.username = res.data.credenciais.usuario;
-          finalClient.password = res.data.credenciais.senha;
-          finalClient.url_m3u = res.data.credenciais.url_m3u;
-        }
-      }
-    }
     await supabase.from('clients').upsert({
       id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, 
       password: finalClient.password, phone: finalClient.phone, server_id: finalClient.serverId, 
@@ -185,46 +133,30 @@ const App: React.FC = () => {
   };
 
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
-    const client = clients.find(c => c.id === clientId);
-    if (!client) return;
-    let newExp = manualDate;
-    const plan = plans.find(p => p.id === (planId || client.planId));
-    if (!manualDate && plan) {
-      const d = new Date(client.expirationDate + 'T00:00:00') < new Date() ? new Date() : new Date(client.expirationDate + 'T00:00:00');
-      if (plan.durationUnit === 'months') d.setMonth(d.getMonth() + plan.durationValue);
-      else d.setDate(d.getDate() + plan.durationValue);
-      newExp = d.toISOString().split('T')[0];
-    }
     const userId = session?.user.id;
-    if (userId) {
-      const server = servers.find(s => s.id === client.serverId);
-      if (server?.apiKey && server?.url) await renewRemoteIptvUser(server.url, server.apiKey, client.username, 30);
-      await supabase.from('clients').update({ expiration_date: newExp, plan_id: planId || client.planId }).eq('id', clientId);
-      fetchData(userId);
-    }
+    if (!userId || isMasterMode.current) return;
+    await supabase.from('clients').update({ expiration_date: manualDate, plan_id: planId }).eq('id', clientId);
+    fetchData(userId);
+  };
+
+  const handleDemoLogin = (email: string) => {
+    isMasterMode.current = true;
+    setSession({ user: { email: email, id: 'master' } });
+    setUserProfile({ id: 'master', email: email, role: 'admin' });
+    setSubscriptionStatus('active');
+    setCurrentView('dashboard');
   };
 
   const renderContent = () => {
-    if (!session) {
-      return <Auth 
-        initialIsSignUp={currentView === 'signup'} 
-        onBack={() => setCurrentView('login')}
-        onDemoLogin={(email) => {
-          setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
-          setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin' });
-          setSubscriptionStatus('active');
-          setCurrentView('dashboard');
-        }}
-      />;
+    if (!session) return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('login')} onDemoLogin={handleDemoLogin} />;
+
+    // BLOQUEIO CENTRALIZADO PARA USUÁRIOS TRIAL
+    if (!isPro && PRO_VIEWS.includes(currentView as any)) {
+      return <Pricing userEmail={session?.user?.email} isPro={false} />;
     }
 
     switch (currentView) {
-      case 'dashboard': 
-        return <Dashboard 
-          onNavigate={setCurrentView as any} 
-          userProfile={userProfile} 
-          onRefreshProfile={() => session && fetchFullUserData(session.user.id)} 
-        />;
+      case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => !isMasterMode.current && session && fetchFullUserData(session.user.id)} />;
       case 'football': return <FootballBanners />;
       case 'movie': return <MovieBanners />;
       case 'series': return <SeriesBanners />;
@@ -233,36 +165,20 @@ const App: React.FC = () => {
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
-      case 'gestor-dashboard': 
-        return <GestorDashboard 
-          clients={clients} 
-          servers={servers} 
-          onNavigate={setCurrentView as any} 
-          onRenew={renewClient} 
-          getClientStatus={getClientStatus} 
-          loading={dataLoading} 
-        />;
-      case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={val => {}} onDeleteServer={val => {}} />;
-      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={val => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
+      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
+      case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={() => {}} onDeleteServer={() => {}} />;
+      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={() => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={() => {}} getClientStatus={getClientStatus} addDays={(d) => d.toISOString()} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
-      default: 
-        return <Dashboard 
-          onNavigate={setCurrentView as any} 
-          userProfile={userProfile} 
-          onRefreshProfile={() => session && fetchFullUserData(session.user.id)} 
-        />;
+      default: return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => !isMasterMode.current && session && fetchFullUserData(session.user.id)} />;
     }
   };
 
   if (authLoading) return (
     <div className="min-h-screen bg-[#0b0e14] flex flex-col items-center justify-center gap-6">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <div className="flex flex-col items-center gap-2">
-        <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-xl">Stream<span className="text-white">HUB</span></h2>
-        <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em] animate-pulse">Sincronizando Sessão...</p>
-      </div>
+      <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-xl">Stream<span className="text-white">HUB</span></h2>
     </div>
   );
 
@@ -279,8 +195,8 @@ const App: React.FC = () => {
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ').toUpperCase()}</span>
             </div>
             {userProfile && (
-              <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
-                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{isPro ? 'MEMBRO PRO' : 'CONTA TRIAL'}</span>
+              <div className={`border px-4 py-1.5 rounded-full ${isPro ? 'bg-blue-600/10 border-blue-500/20' : 'bg-gray-800/50 border-gray-700'}`}>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>{isPro ? 'MEMBRO PRO' : 'CONTA TRIAL'}</span>
               </div>
             )}
           </header>
