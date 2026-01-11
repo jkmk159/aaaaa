@@ -37,9 +37,6 @@ const App: React.FC = () => {
   const [servers, setServers] = useState<Server[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
 
-  // Referência para evitar múltiplas chamadas simultâneas no init
-  const isInitializing = useRef(false);
-
   const getClientStatus = (expirationDate: string): 'active' | 'expired' | 'near_expiry' => {
     const now = new Date();
     const exp = new Date(expirationDate + 'T00:00:00');
@@ -48,7 +45,7 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async (userId: string) => {
-    if (!userId || userId.includes('demo') || userId.includes('master')) return;
+    if (!userId) return;
     try {
       const [resClients, resServers, resPlans] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -72,7 +69,7 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          planId: c.plan_id, 
+          plan_id: c.plan_id, 
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
@@ -94,88 +91,54 @@ const App: React.FC = () => {
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
-      } else {
-        // Fallback para evitar travar se o profile não existir (tabela recém criada)
-        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
       }
       
-      // Carrega dados adicionais
       await fetchData(userId);
     } catch (e) {
       console.error("Erro ao carregar dados do perfil:", e);
     }
-  }, [fetchData, session?.user?.email]);
+  }, [fetchData]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    // Função de inicialização robusta
     const initializeAuth = async () => {
-      if (isInitializing.current) return;
-      isInitializing.current = true;
-
-      try {
-        // 1. Tenta pegar a sessão atual (JWT no cache)
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
-        if (isMounted) {
-          if (currentSession) {
-            setSession(currentSession);
-            await fetchFullUserData(currentSession.user.id);
-            setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
-          } else {
-            setCurrentView('login');
-          }
-        }
-      } catch (err) {
-        console.error("Erro na inicialização do Auth:", err);
-      } finally {
-        if (isMounted) {
-          setAuthLoading(false);
-          isInitializing.current = false;
-        }
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession) {
+        setSession(currentSession);
+        await fetchFullUserData(currentSession.user.id);
+        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
       }
+      setAuthLoading(false);
     };
 
     initializeAuth();
 
-    // 2. Escuta mudanças de estado (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!isMounted) return;
-
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+      if (newSession) {
         setSession(newSession);
-        if (newSession) {
-          await fetchFullUserData(newSession.user.id);
-          setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+        await fetchFullUserData(newSession.user.id);
+        if (event === 'SIGNED_IN') {
+           setCurrentView('dashboard');
         }
-        setAuthLoading(false);
-      } else if (event === 'SIGNED_OUT') {
-        // Limpeza total de estados para garantir reset total da visualização
+      } else {
         setSession(null);
         setUserProfile(null);
-        setClients([]);
-        setServers([]);
-        setPlans([]);
-        setSubscriptionStatus('trial');
         setCurrentView('login');
-        setAuthLoading(false);
       }
     });
 
-    // Timeout de segurança: Se em 5 segundos nada carregar, libera a tela
-    const safetyTimer = setTimeout(() => {
-      if (isMounted && authLoading) {
-        setAuthLoading(false);
+    // Recarregar dados quando a aba ganha foco novamente (evita dashboard zerado)
+    const handleFocus = () => {
+      if (session?.user?.id) {
+        fetchFullUserData(session.user.id);
       }
-    }, 5000);
+    };
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      isMounted = false;
       subscription.unsubscribe();
-      clearTimeout(safetyTimer);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [fetchFullUserData]); 
+  }, [fetchFullUserData, session?.user?.id]); 
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -226,24 +189,21 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // PROTEÇÃO: Se houver sessão, nunca renderiza a tela de login/signup
-    if (session && (currentView === 'login' || currentView === 'signup')) {
-      return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
-    }
-
-    if (currentView === 'login' || currentView === 'signup') {
+    if (!session && (currentView === 'login' || currentView === 'signup')) {
       return (
         <Auth 
           initialIsSignUp={currentView === 'signup'} 
           onDemoLogin={(email) => {
-            setSession({ user: { email: email || 'demo@streamhub.com', id: 'demo-user' } });
-            setUserProfile({ id: 'demo-user', email: email || 'demo@streamhub.com', role: 'admin', credits: 999 });
+            setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
+            setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
             setCurrentView('dashboard');
           }}
         />
       );
     }
-    
+
+    if (!session) return null;
+
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
     if (!isPro && premiumViews.includes(currentView as any)) return (
       <div className="p-20 text-center space-y-8 animate-fade-in">
@@ -293,7 +253,7 @@ const App: React.FC = () => {
               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-white/5 rounded-lg text-gray-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
               </button>
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ')}</span>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ').toUpperCase()}</span>
             </div>
             {userProfile && (
               <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
