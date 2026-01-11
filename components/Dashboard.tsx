@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ViewType, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -33,16 +33,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [amount, setAmount] = useState<number>(0);
   const [formData, setFormData] = useState({ email: '', password: '' });
 
-  const loadingRef = useRef(false);
-
   useEffect(() => {
     if (userProfile) loadData();
-  }, [userProfile]);
+  }, [userProfile?.id, userProfile?.credits]);
 
   const loadData = async () => {
-    if (!userProfile || loadingRef.current) return;
-
-    loadingRef.current = true;
+    if (!userProfile) return;
     setLoading(true);
     setError(null);
 
@@ -73,23 +69,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     } catch (err: any) {
       setError(err.message);
     } finally {
-      loadingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleAdjustCredits = async () => {
     if (!adjustModal.target || !userProfile) return;
-
     const value = Math.abs(amount);
     if (value <= 0) return;
-
     setLoading(true);
 
     try {
       const finalAmount = adjustModal.type === 'add' ? value : -value;
-
-      // Chama o banco de dados para mover o crédito do PAI para o FILHO
       const { error: rpcError } = await supabase.rpc('adjust_credits', {
         p_target_user_id: adjustModal.target.id,
         p_amount: finalAmount,
@@ -100,13 +91,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       setAdjustModal({ open: false, type: 'add', target: null });
       setAmount(0);
-      alert(`Sucesso! ${value} créditos movimentados.`);
+      alert(`Transferência de ${value} CR concluída!`);
       
-      // ATUALIZAÇÃO IMEDIATA:
-      await onRefreshProfile(); // Atualiza o saldo no topo da tela (App.tsx)
-      await loadData();         // Atualiza a lista de revendas abaixo
+      await onRefreshProfile();
+      await loadData();
     } catch (err: any) {
-      alert("ERRO: " + (err.message || "Saldo insuficiente no seu painel."));
+      alert("ERRO NO AJUSTE: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -116,14 +106,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     e.preventDefault();
     if (!userProfile) return;
 
-    // Bloqueio preventivo no Front-end
     if (userProfile.role !== 'admin' && userProfile.credits < 1) {
-      alert("Você não tem saldo (1 CR) para criar uma nova revenda.");
+      alert("Saldo insuficiente.");
       return;
     }
 
     setLoading(true);
-
     try {
       const { data, error: funcError } = await supabase.functions.invoke('create_reseller', {
         body: { 
@@ -134,23 +122,20 @@ const Dashboard: React.FC<DashboardProps> = ({
       });
 
       if (funcError) throw funcError;
-      if (data?.error) throw new Error(data.error);
-
-      alert("Revendedor criado! 1 crédito foi debitado do seu saldo.");
+      alert("Revendedor criado!");
       setCreateModal(false);
       setFormData({ email: '', password: '' });
-      
       await onRefreshProfile();
       await loadData();
     } catch (err: any) {
-      alert("ERRO AO CRIAR: " + err.message);
+      alert("ERRO NA CRIAÇÃO: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteUser = async (userId: string, email: string) => {
-    if (!window.confirm(`Excluir permanentemente "${email}"?`)) return;
+    if (!window.confirm(`Excluir "${email}"?`)) return;
     setLoading(true);
     try {
       const { error } = await supabase.from('profiles').delete().eq('id', userId);
@@ -209,7 +194,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               {managedUsers.map(user => (
                 <tr key={user.id} className="hover:bg-white/[0.01] transition-colors group">
                   <td className="px-8 py-6">
-                    <p className="text-sm font-black text-white uppercase italic tracking-tight">{user.email.split('@')[0]}</p>
+                    <p className="text-sm font-black text-white uppercase italic tracking-tight">{user.email.split('@')[0].toUpperCase()}</p>
                     <p className="text-[10px] text-gray-600 font-bold">{user.email}</p>
                   </td>
                   <td className="px-8 py-6 text-center">
@@ -235,6 +220,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </td>
                 </tr>
               ))}
+              {!loading && managedUsers.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-8 py-10 text-center text-gray-700 uppercase font-black text-[10px]">Nenhum revendedor encontrado em sua rede.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
