@@ -72,7 +72,7 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          plan_id: c.plan_id,
+          planId: c.plan_id, // CORRIGIDO: De plan_id para planId
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
