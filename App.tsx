@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
@@ -28,16 +27,16 @@ const App: React.FC = () => {
   const [session, setSession] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const isPro = subscriptionStatus === 'active';
-  const isInitialMount = useRef(true);
 
   const [clients, setClients] = useState<Client[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+
+  const isInitializing = useRef(false);
 
   const getClientStatus = (expirationDate: string): 'active' | 'expired' | 'near_expiry' => {
     const now = new Date();
@@ -47,8 +46,7 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async (userId: string) => {
-    if (!userId) return;
-    setDataLoading(true);
+    if (!userId || userId.includes('demo') || userId.includes('master')) return;
     try {
       const [resClients, resServers, resPlans] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -66,22 +64,13 @@ const App: React.FC = () => {
       
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id, 
-          name: c.name, 
-          username: c.username, 
-          password: c.password, 
-          phone: c.phone,
-          serverId: c.server_id, 
-          planId: c.plan_id, // CORRIGIDO: De plan_id para planId
-          expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), 
-          url_m3u: c.url_m3u
+          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
+          serverId: c.server_id, plan_id: c.plan_id, expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
     } catch (e) { 
-      console.error("Erro ao carregar dados:", e); 
-    } finally {
-      setDataLoading(false);
+      console.error("Erro ao carregar tabelas do gestor:", e); 
     }
   }, []);
 
@@ -96,68 +85,86 @@ const App: React.FC = () => {
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
-      } else if (pError) {
-        console.error("Erro perfil:", pError);
+      } else {
+        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
       }
       
       await fetchData(userId);
     } catch (e) {
-      console.error("Erro ao carregar perfil completo:", e);
+      console.error("Erro ao carregar dados do perfil:", e);
+    } finally {
+      // Força a liberação da tela mesmo se o perfil falhar
+      setAuthLoading(false);
     }
-  }, [fetchData]);
+  }, [fetchData, session?.user?.email]);
 
-  // Efeito principal de Autenticação e Persistência
   useEffect(() => {
-    const initAuth = async () => {
-      setAuthLoading(true);
+    let isMounted = true;
+
+    const initializeAuth = async () => {
+      if (isInitializing.current) return;
+      isInitializing.current = true;
+
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        if (initialSession) {
-          setSession(initialSession);
-          await fetchFullUserData(initialSession.user.id);
-          setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (isMounted) {
+          if (currentSession) {
+            setSession(currentSession);
+            await fetchFullUserData(currentSession.user.id);
+            setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
+          } else {
+            setCurrentView('login');
+            setAuthLoading(false);
+          }
         }
       } catch (err) {
-        console.error("Erro na inicialização da auth:", err);
+        console.error("Erro na inicialização do Auth:", err);
+        if (isMounted) setAuthLoading(false);
       } finally {
-        setAuthLoading(false);
+        if (isMounted) {
+          isInitializing.current = false;
+        }
       }
     };
 
-    initAuth();
+    initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (newSession) {
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         setSession(newSession);
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (newSession) {
           await fetchFullUserData(newSession.user.id);
-          if (event === 'SIGNED_IN') setCurrentView('dashboard');
+          setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
         }
-      } else {
+        setAuthLoading(false);
+      } else if (event === 'SIGNED_OUT') {
         setSession(null);
         setUserProfile(null);
+        setClients([]);
+        setServers([]);
+        setPlans([]);
         setSubscriptionStatus('trial');
         setCurrentView('login');
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
 
+    const safetyTimer = setTimeout(() => {
+      if (isMounted && authLoading) {
+        console.warn("Liberando tela pelo Timer de Segurança.");
+        setAuthLoading(false);
+      }
+    }, 5000);
+
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
+      clearTimeout(safetyTimer);
     };
   }, [fetchFullUserData]);
-
-  // Sincronização automática ao retornar para a aba do navegador
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && session?.user?.id && !authLoading) {
-        fetchFullUserData(session.user.id);
-      }
-    };
-
-    window.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => window.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [session?.user?.id, fetchFullUserData, authLoading]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -208,18 +215,16 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (!session) {
-      return <Auth 
-        initialIsSignUp={currentView === 'signup'} 
-        onBack={() => setCurrentView('login')}
-        onDemoLogin={(email) => {
-          setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
-          setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
-          setSubscriptionStatus('active');
-          setCurrentView('dashboard');
-        }}
-      />;
-    }
+    if (currentView === 'login' || currentView === 'signup') return <Auth initialIsSignUp={currentView === 'signup'} />;
+    
+    const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
+    if (!isPro && premiumViews.includes(currentView as any)) return (
+      <div className="p-20 text-center space-y-8 animate-fade-in">
+        <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
+        <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
+        <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
+      </div>
+    );
 
     switch (currentView) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
@@ -231,7 +236,7 @@ const App: React.FC = () => {
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
-      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
+      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={val => {}} onDeleteServer={val => {}} />;
       case 'gestor-clientes': return <GestorClientes clients={clients} setClients={val => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
@@ -261,7 +266,7 @@ const App: React.FC = () => {
               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-white/5 rounded-lg text-gray-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
               </button>
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ').toUpperCase()}</span>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ')}</span>
             </div>
             {userProfile && (
               <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
