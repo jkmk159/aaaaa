@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const isPro = subscriptionStatus === 'active';
+  const isInitialMount = useRef(true);
 
   const [clients, setClients] = useState<Client[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -71,7 +72,7 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          planId: c.plan_id,
+          plan_id: c.plan_id,
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
@@ -86,7 +87,7 @@ const App: React.FC = () => {
 
   const fetchFullUserData = useCallback(async (userId: string) => {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error: pError } = await supabase
         .from('profiles')
         .select('id, email, role, credits, subscription_status')
         .eq('id', userId)
@@ -95,30 +96,32 @@ const App: React.FC = () => {
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
+      } else if (pError) {
+        console.error("Erro perfil:", pError);
       }
       
       await fetchData(userId);
     } catch (e) {
-      console.error("Erro ao carregar perfil:", e);
+      console.error("Erro ao carregar perfil completo:", e);
     }
   }, [fetchData]);
 
+  // Efeito principal de Autenticação e Persistência
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (authLoading) {
+    const initAuth = async () => {
+      setAuthLoading(true);
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (initialSession) {
+          setSession(initialSession);
+          await fetchFullUserData(initialSession.user.id);
+          setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+        }
+      } catch (err) {
+        console.error("Erro na inicialização da auth:", err);
+      } finally {
         setAuthLoading(false);
       }
-    }, 6000);
-
-    const initAuth = async () => {
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
-      if (initialSession) {
-        setSession(initialSession);
-        await fetchFullUserData(initialSession.user.id);
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
-      }
-      setAuthLoading(false);
-      clearTimeout(timer);
     };
 
     initAuth();
@@ -126,13 +129,14 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (newSession) {
         setSession(newSession);
-        if (event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await fetchFullUserData(newSession.user.id);
-          setCurrentView('dashboard');
+          if (event === 'SIGNED_IN') setCurrentView('dashboard');
         }
       } else {
         setSession(null);
         setUserProfile(null);
+        setSubscriptionStatus('trial');
         setCurrentView('login');
       }
       setAuthLoading(false);
@@ -140,9 +144,20 @@ const App: React.FC = () => {
 
     return () => {
       subscription.unsubscribe();
-      clearTimeout(timer);
     };
   }, [fetchFullUserData]);
+
+  // Sincronização automática ao retornar para a aba do navegador
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && session?.user?.id && !authLoading) {
+        fetchFullUserData(session.user.id);
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => window.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [session?.user?.id, fetchFullUserData, authLoading]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -200,6 +215,7 @@ const App: React.FC = () => {
         onDemoLogin={(email) => {
           setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
           setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
+          setSubscriptionStatus('active');
           setCurrentView('dashboard');
         }}
       />;
@@ -231,7 +247,6 @@ const App: React.FC = () => {
       <div className="flex flex-col items-center gap-2">
         <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-xl">Stream<span className="text-white">HUB</span></h2>
         <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em] animate-pulse">Sincronizando Sessão...</p>
-        <button onClick={() => setAuthLoading(false)} className="mt-8 text-[9px] text-gray-700 hover:text-white font-bold uppercase tracking-widest transition-colors">Tentar forçar entrada</button>
       </div>
     </div>
   );
