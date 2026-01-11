@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -88,7 +88,7 @@ const App: React.FC = () => {
     try {
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('id, email, role, credits, subscription_status')
+        .select('id, email, role, subscription_status')
         .eq('id', userId)
         .maybeSingle();
 
@@ -202,7 +202,7 @@ const App: React.FC = () => {
         onBack={() => setCurrentView('login')}
         onDemoLogin={(email) => {
           setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
-          setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
+          setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin' });
           setSubscriptionStatus('active');
           setCurrentView('dashboard');
         }}
@@ -224,13 +224,26 @@ const App: React.FC = () => {
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
-      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
+      case 'gestor-dashboard': 
+        return <GestorDashboard 
+          clients={clients} 
+          servers={servers} 
+          onNavigate={setCurrentView as any} 
+          onRenew={renewClient} 
+          getClientStatus={getClientStatus} 
+          loading={dataLoading} 
+        />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={val => {}} onDeleteServer={val => {}} />;
       case 'gestor-clientes': return <GestorClientes clients={clients} setClients={val => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
-      default: return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
+      default: 
+        return <Dashboard 
+          onNavigate={setCurrentView as any} 
+          userProfile={userProfile} 
+          onRefreshProfile={() => session && fetchFullUserData(session.user.id)} 
+        />;
     }
   };
 
