@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
@@ -27,17 +28,15 @@ const App: React.FC = () => {
   const [session, setSession] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Define se é PRO baseado no estado atualizado
   const isPro = subscriptionStatus === 'active';
 
   const [clients, setClients] = useState<Client[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
-
-  const isInitializing = useRef(false);
 
   const getClientStatus = (expirationDate: string): 'active' | 'expired' | 'near_expiry' => {
     const now = new Date();
@@ -47,7 +46,8 @@ const App: React.FC = () => {
   };
 
   const fetchData = useCallback(async (userId: string) => {
-    if (!userId || userId.includes('demo') || userId.includes('master')) return;
+    if (!userId) return;
+    setDataLoading(true);
     try {
       const [resClients, resServers, resPlans] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -71,20 +71,22 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          planId: c.plan_id, 
+          planId: c.plan_id,
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
         })));
       }
     } catch (e) { 
-      console.error("Erro ao carregar tabelas do gestor:", e); 
+      console.error("Erro ao carregar dados:", e); 
+    } finally {
+      setDataLoading(false);
     }
-  }, [getClientStatus]);
+  }, []);
 
   const fetchFullUserData = useCallback(async (userId: string) => {
     try {
-      const { data: profile, error: pError } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .select('id, email, role, credits, subscription_status')
         .eq('id', userId)
@@ -92,89 +94,58 @@ const App: React.FC = () => {
 
       if (profile) {
         setUserProfile(profile);
-        // Garante que o status seja atualizado corretamente do banco
-        const status = profile.subscription_status || 'trial';
-        setSubscriptionStatus(status as any);
-        console.log("Status da assinatura carregado:", status);
-      } else {
-        setUserProfile({ id: userId, email: session?.user?.email || '', role: 'reseller', credits: 0 });
-        setSubscriptionStatus('trial');
+        setSubscriptionStatus(profile.subscription_status || 'trial');
       }
       
       await fetchData(userId);
     } catch (e) {
-      console.error("Erro ao carregar dados do perfil:", e);
-    } finally {
-      setAuthLoading(false);
+      console.error("Erro ao carregar perfil:", e);
     }
-  }, [fetchData, session?.user?.email]);
+  }, [fetchData]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const initializeAuth = async () => {
-      if (isInitializing.current) return;
-      isInitializing.current = true;
-
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        
-        if (isMounted) {
-          if (currentSession) {
-            setSession(currentSession);
-            await fetchFullUserData(currentSession.user.id);
-            setCurrentView(v => (v === 'login' || v === 'signup') ? 'dashboard' : v);
-          } else {
-            setCurrentView('login');
-            setAuthLoading(false);
-          }
-        }
-      } catch (err) {
-        console.error("Erro na inicialização do Auth:", err);
-        if (isMounted) setAuthLoading(false);
-      } finally {
-        if (isMounted) {
-          isInitializing.current = false;
-        }
+    const initAuth = async () => {
+      setAuthLoading(true);
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      
+      if (initialSession) {
+        setSession(initialSession);
+        await fetchFullUserData(initialSession.user.id);
+        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
       }
+      setAuthLoading(false);
     };
 
-    initializeAuth();
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!isMounted) return;
-
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+      if (newSession) {
         setSession(newSession);
-        if (newSession) {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await fetchFullUserData(newSession.user.id);
-        } else {
-          setAuthLoading(false);
+          if (event === 'SIGNED_IN') setCurrentView('dashboard');
         }
-      } else if (event === 'SIGNED_OUT') {
+      } else {
         setSession(null);
         setUserProfile(null);
-        setClients([]);
-        setServers([]);
-        setPlans([]);
         setSubscriptionStatus('trial');
         setCurrentView('login');
-        setAuthLoading(false);
       }
+      setAuthLoading(false);
     });
 
-    const safetyTimer = setTimeout(() => {
-      if (isMounted && authLoading) {
-        setAuthLoading(false);
+    const handleFocus = () => {
+      if (session?.user?.id) {
+        fetchFullUserData(session.user.id);
       }
-    }, 6000);
+    };
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      isMounted = false;
       subscription.unsubscribe();
-      clearTimeout(safetyTimer);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, [fetchFullUserData]);
+  }, [fetchFullUserData, session?.user?.id]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -213,7 +184,7 @@ const App: React.FC = () => {
       const d = new Date(client.expirationDate + 'T00:00:00') < new Date() ? new Date() : new Date(client.expirationDate + 'T00:00:00');
       if (plan.durationUnit === 'months') d.setMonth(d.getMonth() + plan.durationValue);
       else d.setDate(d.getDate() + plan.durationValue);
-      newExp = d.toISOString().split('T00:00:00')[0];
+      newExp = d.toISOString().split('T')[0];
     }
     const userId = session?.user.id;
     if (userId) {
@@ -225,17 +196,18 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (currentView === 'login' || currentView === 'signup') return <Auth initialIsSignUp={currentView === 'signup'} />;
-    
-    const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
-    if (!isPro && premiumViews.includes(currentView as any)) return (
-      <div className="p-20 text-center space-y-8 animate-fade-in">
-        <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
-        <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
-        <p className="text-gray-400 max-w-md mx-auto">Este recurso está disponível apenas para assinantes do plano Profissional.</p>
-        <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
-      </div>
-    );
+    if (!session) {
+      return <Auth 
+        initialIsSignUp={currentView === 'signup'} 
+        onBack={() => setCurrentView('login')}
+        onDemoLogin={(email) => {
+          setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
+          setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
+          setSubscriptionStatus('active');
+          setCurrentView('dashboard');
+        }}
+      />;
+    }
 
     switch (currentView) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
@@ -247,9 +219,9 @@ const App: React.FC = () => {
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
-      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} />;
+      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={val => {}} onDeleteServer={val => {}} />;
-      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={setClients} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
+      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={val => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
@@ -277,11 +249,11 @@ const App: React.FC = () => {
               <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 hover:bg-white/5 rounded-lg text-gray-400">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
               </button>
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ')}</span>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ').toUpperCase()}</span>
             </div>
             {userProfile && (
               <div className="bg-blue-600/10 border border-blue-500/20 px-4 py-1.5 rounded-full">
-                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Créditos: {userProfile.credits || 0}</span>
+                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{isPro ? 'MEMBRO PRO' : 'CONTA TRIAL'}</span>
               </div>
             )}
           </header>
