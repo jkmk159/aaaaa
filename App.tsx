@@ -53,6 +53,12 @@ const App: React.FC = () => {
     return diffDays < 0 ? 'expired' : diffDays <= 5 ? 'near_expiry' : 'active';
   };
 
+  const addDaysHelper = (date: Date, days: number): string => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result.toISOString().split('T')[0];
+  };
+
   const fetchData = useCallback(async (userId: string) => {
     if (!userId || isMasterMode.current) return;
     setDataLoading(true);
@@ -68,7 +74,7 @@ const App: React.FC = () => {
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
           id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, planId: c.plan_id, expirationDate: c.expiration_date,
+          serverId: c.server_id, plan_id: c.plan_id, expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
@@ -139,10 +145,12 @@ const App: React.FC = () => {
     fetchData(userId);
   };
 
-  const handleDemoLogin = (email: string) => {
+  // FIX TS2322: Adicionado parâmetro opcional para bater com a interface AuthProps
+  const handleDemoLogin = (email?: string) => {
+    const finalEmail = email || 'jaja@jaja';
     isMasterMode.current = true;
-    setSession({ user: { email: email, id: 'master' } });
-    setUserProfile({ id: 'master', email: email, role: 'admin' });
+    setSession({ user: { email: finalEmail, id: 'master' } });
+    setUserProfile({ id: 'master', email: finalEmail, role: 'admin' });
     setSubscriptionStatus('active');
     setCurrentView('dashboard');
   };
@@ -167,7 +175,7 @@ const App: React.FC = () => {
       case 'sales-copy': return <SalesCopy />;
       case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={() => {}} onDeleteServer={() => {}} />;
-      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={() => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={() => {}} getClientStatus={getClientStatus} addDays={(d) => d.toISOString()} />;
+      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={() => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={() => {}} getClientStatus={getClientStatus} addDays={addDaysHelper} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
