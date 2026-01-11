@@ -12,9 +12,9 @@ import LogoGenerator from './components/LogoGenerator';
 import AdAnalyzer from './components/AdAnalyzer';
 import SalesCopy from './components/SalesCopy';
 import Auth from './components/Auth';
-import LandingPage from './components/LandingPage';
+import LandingPage from './components/LandingPage.tsx';
 
-import GestorDashboard from './components/GestorDashboard';
+import GestorDashboard from './components/GestorDashboard.tsx';
 import GestorServidores from './components/GestorServidores';
 import GestorClientes from './components/GestorClientes';
 import GestorTemplateAI from './components/GestorTemplateAI';
@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [session, setSession] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -47,6 +48,7 @@ const App: React.FC = () => {
 
   const fetchData = useCallback(async (userId: string) => {
     if (!userId) return;
+    setDataLoading(true);
     try {
       const [resClients, resServers, resPlans] = await Promise.all([
         supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -77,13 +79,15 @@ const App: React.FC = () => {
         })));
       }
     } catch (e) { 
-      console.error("Erro ao carregar tabelas do gestor:", e); 
+      console.error("Erro ao carregar dados:", e); 
+    } finally {
+      setDataLoading(false);
     }
   }, []);
 
   const fetchFullUserData = useCallback(async (userId: string) => {
     try {
-      const { data: profile, error: pError } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('id, email, role, credits, subscription_status')
         .eq('id', userId)
@@ -96,37 +100,39 @@ const App: React.FC = () => {
       
       await fetchData(userId);
     } catch (e) {
-      console.error("Erro ao carregar dados do perfil:", e);
+      console.error("Erro ao carregar perfil:", e);
     }
   }, [fetchData]);
 
   useEffect(() => {
-    // 1. Verificação inicial imediata para evitar o loop do loading infinito
-    const initSession = async () => {
-      try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        if (initialSession) {
-          setSession(initialSession);
-          await fetchFullUserData(initialSession.user.id);
-          setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
-        }
-      } catch (err) {
-        console.error("Erro ao restaurar sessão:", err);
-      } finally {
+    // FAIL-SAFE: Se demorar mais de 6 segundos, libera o carregamento
+    const timer = setTimeout(() => {
+      if (authLoading) {
+        console.warn("Auth Timeout: Forçando encerramento do loading");
         setAuthLoading(false);
       }
+    }, 6000);
+
+    const initAuth = async () => {
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      if (initialSession) {
+        setSession(initialSession);
+        await fetchFullUserData(initialSession.user.id);
+        setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
+      }
+      setAuthLoading(false);
+      clearTimeout(timer);
     };
 
-    initSession();
+    initAuth();
 
-    // 2. Ouvinte de mudanças de estado
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (newSession) {
         setSession(newSession);
-        if (event === 'SIGNED_IN' || !userProfile) {
+        if (event === 'SIGNED_IN') {
           await fetchFullUserData(newSession.user.id);
+          setCurrentView('dashboard');
         }
-        setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
       } else {
         setSession(null);
         setUserProfile(null);
@@ -137,19 +143,9 @@ const App: React.FC = () => {
 
     return () => {
       subscription.unsubscribe();
+      clearTimeout(timer);
     };
-  }, [fetchFullUserData]); 
-
-  // Sincronização ao voltar para a aba
-  useEffect(() => {
-    const handleFocus = () => {
-      if (session?.user?.id && !authLoading) {
-        fetchFullUserData(session.user.id);
-      }
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [session?.user?.id, fetchFullUserData, authLoading]);
+  }, [fetchFullUserData]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -213,15 +209,6 @@ const App: React.FC = () => {
       />;
     }
 
-    const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
-    if (!isPro && premiumViews.includes(currentView as any)) return (
-      <div className="p-20 text-center space-y-8 animate-fade-in">
-        <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl mx-auto border border-blue-500/10">🔒</div>
-        <h2 className="text-3xl font-black mb-4 text-white">RECURSO <span className="text-blue-500">PRO</span></h2>
-        <button onClick={() => setCurrentView('pricing')} className="bg-blue-600 px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs">Ver Planos</button>
-      </div>
-    );
-
     switch (currentView) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
       case 'football': return <FootballBanners />;
@@ -232,7 +219,7 @@ const App: React.FC = () => {
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
-      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} />;
+      case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={val => {}} onDeleteServer={val => {}} />;
       case 'gestor-clientes': return <GestorClientes clients={clients} setClients={val => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={val => {}} getClientStatus={getClientStatus} addDays={(d, v) => d.toISOString()} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
@@ -248,6 +235,7 @@ const App: React.FC = () => {
       <div className="flex flex-col items-center gap-2">
         <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-xl">Stream<span className="text-white">HUB</span></h2>
         <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.3em] animate-pulse">Sincronizando Sessão...</p>
+        <button onClick={() => setAuthLoading(false)} className="mt-8 text-[9px] text-gray-700 hover:text-white font-bold uppercase tracking-widest transition-colors">Tentar forçar entrada</button>
       </div>
     </div>
   );
