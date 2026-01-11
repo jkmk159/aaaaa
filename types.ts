@@ -1,7 +1,7 @@
 
 export interface FootballGame {
   fixture: { id: number; date: string; status: { short: string; long: string }; };
-  league: { name: string; country: string; logo: string; };
+  league: { name: string; logo: string; };
   teams: { home: { name: string; logo: string }; away: { name: string; logo: string }; };
   broadcast?: string;
 }
@@ -32,8 +32,7 @@ export interface UserProfile {
   id: string;
   email: string;
   role: 'admin' | 'reseller';
-  credits: number;
-  parent_id?: string;
+  subscription_status?: 'active' | 'trial' | 'expired';
 }
 
 export interface ResaleCustomer {
