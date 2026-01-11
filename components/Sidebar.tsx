@@ -8,8 +8,8 @@ interface SidebarProps {
   onNavigate: (view: ViewType) => void;
   userEmail?: string;
   isPro?: boolean;
-  isOpen?: boolean; // Nova prop para controle mobile
-  onClose?: () => void; // Nova prop para fechar no mobile
+  isOpen?: boolean; 
+  onClose?: () => void; 
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, isPro, isOpen, onClose }) => {
@@ -24,24 +24,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     setIsLoggingOut(true);
     
     try {
-      // 1. Limpeza local imediata (Evita persistência em logins manuais/demo)
+      // 1. Encerra a sessão no Supabase
+      await supabase.auth.signOut();
+      
+      // 2. Limpeza local total
       localStorage.clear();
       sessionStorage.clear();
 
-      // 2. Tenta encerrar a sessão no Supabase (ignorando erros se for sessão manual)
-      await supabase.auth.signOut().catch(() => {});
-      
-      // 3. Força o recarregamento da página para a raiz, o que limpa toda a memória do React
-      window.location.href = '/'; 
+      // 3. Força o recarregamento da página para o estado inicial absoluto
+      window.location.replace('/'); 
     } catch (error) {
-      console.error("Erro crítico ao sair:", error);
+      console.error("Erro ao sair:", error);
       window.location.href = '/';
     }
   };
 
   const handleNav = (view: ViewType) => {
     onNavigate(view);
-    if (onClose) onClose(); // Fecha o menu ao navegar no mobile
+    if (onClose) onClose();
   };
 
   const generatorItems = [
@@ -73,7 +73,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
 
   return (
     <>
-      {/* Backdrop para Mobile */}
       {isOpen && (
         <div 
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] md:hidden animate-fade-in"
@@ -181,7 +180,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
               {userEmail?.[0]?.toUpperCase() || 'U'}
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-[10px] font-black uppercase tracking-tight leading-none truncate text-white">{userEmail?.split('@')[0] || 'Usuário'}</p>
+              <p className="text-[10px] font-black uppercase tracking-tight leading-none truncate text-white">{userEmail?.split('@')[0].toUpperCase() || 'USUÁRIO'}</p>
               <p className={`text-[8px] font-bold uppercase tracking-widest mt-1 ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>
                 {isPro ? 'STATUS PRO' : 'CONTA TRIAL'}
               </p>
