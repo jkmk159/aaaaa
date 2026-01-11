@@ -24,15 +24,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     setIsLoggingOut(true);
     
     try {
-      // 1. Encerra a sessão no Supabase
-      await supabase.auth.signOut();
-      
-      // 2. Limpeza local total
+      // 1. Limpa o cache ANTES para evitar que o onAuthStateChange tente re-autenticar
       localStorage.clear();
       sessionStorage.clear();
+      
+      // Limpa cookies manuais que o Supabase possa ter injetado
+      const cookies = document.cookie.split(";");
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf("=");
+        const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+      }
 
-      // 3. Força o recarregamento da página para o estado inicial absoluto
-      window.location.replace('/'); 
+      // 2. Encerra a sessão no Supabase
+      await supabase.auth.signOut();
+      
+      // 3. Força o redirecionamento bruto
+      window.location.assign('/'); 
     } catch (error) {
       console.error("Erro ao sair:", error);
       window.location.href = '/';
