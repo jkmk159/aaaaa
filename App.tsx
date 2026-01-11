@@ -12,9 +12,8 @@ import LogoGenerator from './components/LogoGenerator';
 import AdAnalyzer from './components/AdAnalyzer';
 import SalesCopy from './components/SalesCopy';
 import Auth from './components/Auth';
-import LandingPage from './components/LandingPage.tsx';
 
-import GestorDashboard from './components/GestorDashboard.tsx';
+import GestorDashboard from './components/GestorDashboard';
 import GestorServidores from './components/GestorServidores';
 import GestorClientes from './components/GestorClientes';
 import GestorTemplateAI from './components/GestorTemplateAI';
@@ -25,7 +24,7 @@ import { supabase } from './lib/supabase';
 import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup' | 'landing'>('landing');
+  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
   const [session, setSession] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -105,10 +104,8 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   useEffect(() => {
-    // FAIL-SAFE: Se demorar mais de 6 segundos, libera o carregamento
     const timer = setTimeout(() => {
       if (authLoading) {
-        console.warn("Auth Timeout: Forçando encerramento do loading");
         setAuthLoading(false);
       }
     }, 6000);
@@ -118,7 +115,7 @@ const App: React.FC = () => {
       if (initialSession) {
         setSession(initialSession);
         await fetchFullUserData(initialSession.user.id);
-        setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
+        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
       }
       setAuthLoading(false);
       clearTimeout(timer);
@@ -136,7 +133,7 @@ const App: React.FC = () => {
       } else {
         setSession(null);
         setUserProfile(null);
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? prev : 'landing');
+        setCurrentView('login');
       }
       setAuthLoading(false);
     });
@@ -197,10 +194,9 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (!session) {
-      if (currentView === 'landing') return <LandingPage onLogin={() => setCurrentView('login')} onSignup={() => setCurrentView('signup')} />;
       return <Auth 
         initialIsSignUp={currentView === 'signup'} 
-        onBack={() => setCurrentView('landing')}
+        onBack={() => setCurrentView('login')}
         onDemoLogin={(email) => {
           setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
           setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
