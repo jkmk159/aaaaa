@@ -24,23 +24,22 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     setIsLoggingOut(true);
     
     try {
-      // 1. Limpa o cache ANTES para evitar que o onAuthStateChange tente re-autenticar
+      // 1. Limpeza agressiva do armazenamento local (especialmente tokens do Supabase)
+      localStorage.removeItem('supabase.auth.token');
       localStorage.clear();
       sessionStorage.clear();
       
-      // Limpa cookies manuais que o Supabase possa ter injetado
-      const cookies = document.cookie.split(";");
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i];
-        const eqPos = cookie.indexOf("=");
-        const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-      }
+      // 2. Limpeza de cookies de sessão
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
 
-      // 2. Encerra a sessão no Supabase
+      // 3. Chamada de saída no servidor
       await supabase.auth.signOut();
       
-      // 3. Força o redirecionamento bruto
+      // 4. Redirecionamento forçado para a raiz (limpa o estado do React)
       window.location.assign('/'); 
     } catch (error) {
       console.error("Erro ao sair:", error);
