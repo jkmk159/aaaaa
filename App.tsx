@@ -210,7 +210,12 @@ const App: React.FC = () => {
     }
 
     switch (currentView) {
-      case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
+      case 'dashboard': 
+        return <Dashboard 
+          onNavigate={setCurrentView as any} 
+          userProfile={userProfile} 
+          onRefreshProfile={() => session && fetchFullUserData(session.user.id)} 
+        />;
       case 'football': return <FootballBanners />;
       case 'movie': return <MovieBanners />;
       case 'series': return <SeriesBanners />;
