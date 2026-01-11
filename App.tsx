@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -12,6 +12,7 @@ import LogoGenerator from './components/LogoGenerator';
 import AdAnalyzer from './components/AdAnalyzer';
 import SalesCopy from './components/SalesCopy';
 import Auth from './components/Auth';
+import LandingPage from './components/LandingPage';
 
 import GestorDashboard from './components/GestorDashboard';
 import GestorServidores from './components/GestorServidores';
@@ -24,7 +25,7 @@ import { supabase } from './lib/supabase';
 import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
+  const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup' | 'landing'>('landing');
   const [session, setSession] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -69,7 +70,7 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          planId: c.plan_id, // CORREÇÃO: Mapeado de plan_id para planId para satisfazer o tipo Client
+          planId: c.plan_id,
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
@@ -100,44 +101,47 @@ const App: React.FC = () => {
   }, [fetchData]);
 
   useEffect(() => {
-    const initializeAuth = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (currentSession) {
-        setSession(currentSession);
-        await fetchFullUserData(currentSession.user.id);
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
-      }
-      setAuthLoading(false);
-    };
-
-    initializeAuth();
-
+    // Configura o ouvinte de estado único para evitar loops
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (newSession) {
         setSession(newSession);
-        await fetchFullUserData(newSession.user.id);
-        if (event === 'SIGNED_IN') {
-           setCurrentView('dashboard');
+        // Só tenta buscar dados se ainda não temos o perfil ou se foi um login novo
+        if (!userProfile || event === 'SIGNED_IN') {
+          await fetchFullUserData(newSession.user.id);
         }
+        
+        // Redireciona para o dashboard apenas se estiver em telas de auth
+        setCurrentView(prev => (prev === 'login' || prev === 'signup' || prev === 'landing') ? 'dashboard' : prev);
       } else {
         setSession(null);
         setUserProfile(null);
-        setCurrentView('login');
+        // Se deslogado, volta para landing, a menos que esteja no meio de um processo de login
+        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? prev : 'landing');
       }
+      setAuthLoading(false);
     });
 
+    // Timeout de segurança: Se em 10 segundos nada acontecer, libera o loading para não travar o usuário
+    const safetyTimeout = setTimeout(() => {
+      setAuthLoading(false);
+    }, 10000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(safetyTimeout);
+    };
+  }, [fetchFullUserData, userProfile?.id]); 
+
+  // Listener para re-sincronizar dados quando voltar para a aba
+  useEffect(() => {
     const handleFocus = () => {
       if (session?.user?.id) {
         fetchFullUserData(session.user.id);
       }
     };
     window.addEventListener('focus', handleFocus);
-
-    return () => {
-      subscription.unsubscribe();
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [fetchFullUserData, session?.user?.id]); 
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [session?.user?.id, fetchFullUserData]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
@@ -188,20 +192,18 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (!session && (currentView === 'login' || currentView === 'signup')) {
-      return (
-        <Auth 
-          initialIsSignUp={currentView === 'signup'} 
-          onDemoLogin={(email) => {
-            setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
-            setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
-            setCurrentView('dashboard');
-          }}
-        />
-      );
+    if (!session) {
+      if (currentView === 'landing') return <LandingPage onLogin={() => setCurrentView('login')} onSignup={() => setCurrentView('signup')} />;
+      return <Auth 
+        initialIsSignUp={currentView === 'signup'} 
+        onBack={() => setCurrentView('landing')}
+        onDemoLogin={(email) => {
+          setSession({ user: { email: email || 'jaja@jaja', id: 'master' } });
+          setUserProfile({ id: 'master', email: email || 'jaja@jaja', role: 'admin', credits: 999 });
+          setCurrentView('dashboard');
+        }}
+      />;
     }
-
-    if (!session) return null;
 
     const premiumViews: ViewType[] = ['editor', 'ad-analyzer', 'logo', 'sales-copy', 'gestor-template-ai'];
     if (!isPro && premiumViews.includes(currentView as any)) return (
