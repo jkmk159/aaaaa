@@ -1,99 +1,133 @@
 
 import React from 'react';
-import { Client, Server, ViewType } from '../types';
+import { ViewType, UserProfile } from '../types';
 
-interface GestorDashboardProps {
-  clients: Client[];
-  servers: Server[];
+interface DashboardProps {
   onNavigate: (view: ViewType) => void;
-  onRenew: (clientId: string, planId: string) => void;
-  getClientStatus: (date: string) => 'active' | 'expired' | 'near_expiry';
-  loading?: boolean;
+  userProfile: UserProfile | null;
+  onRefreshProfile: () => void;
 }
 
-const GestorDashboard: React.FC<GestorDashboardProps> = ({ 
-  clients, 
-  servers, 
-  onNavigate, 
-  onRenew, 
-  getClientStatus,
-  loading = false
+const Dashboard: React.FC<DashboardProps> = ({
+  onNavigate,
+  userProfile
 }) => {
-  const active = clients.filter(c => getClientStatus(c.expirationDate) === 'active').length;
-  const expired = clients.filter(c => getClientStatus(c.expirationDate) === 'expired').length;
-  const near = clients.filter(c => getClientStatus(c.expirationDate) === 'near_expiry');
-
-  const estimatedRevenue = active * 35; 
+  const userName = userProfile?.email?.split('@')[0].toUpperCase() || 'USUÁRIO';
 
   return (
-    <div className="p-8 space-y-8 animate-fade-in">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-        <div>
-          <h2 className="text-3xl font-black italic tracking-tighter uppercase">DASH<span className="text-blue-500">BOARD</span></h2>
-          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">Visão geral do seu negócio de IPTV</p>
-        </div>
-        <div className="bg-blue-600/10 px-6 py-3 rounded-2xl border border-blue-500/20 min-w-[200px]">
-          <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Faturamento Est. Mensal</p>
-          <p className="text-xl font-black text-white">
-            {loading ? <span className="animate-pulse">Calculando...</span> : `R$ ${estimatedRevenue.toLocaleString('pt-BR')}`}
+    <div className="p-4 md:p-8 space-y-10 animate-fade-in max-w-7xl mx-auto">
+      {/* Hero Welcome Section */}
+      <section className="relative overflow-hidden bg-[#141824] rounded-[48px] border border-gray-800 p-8 md:p-16 shadow-3xl">
+        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-600/10 to-transparent pointer-events-none"></div>
+        <div className="relative z-10 space-y-6">
+          <div className="inline-block px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">
+            PAINEL DE CONTROLE CENTRAL
+          </div>
+          <h2 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none text-white">
+            BEM-VINDO AO <span className="text-blue-500">STREAMHUB,</span><br />
+            {userName}
+          </h2>
+          <p className="text-gray-400 max-w-xl text-sm md:text-lg font-medium leading-relaxed">
+            Sua plataforma completa para criação de conteúdo e gestão de IPTV. 
+            Escolha uma das ferramentas abaixo para começar a escalar suas vendas hoje.
           </p>
+          <div className="flex flex-wrap gap-4 pt-4">
+            <button 
+              onClick={() => onNavigate('gestor-dashboard')}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black uppercase italic tracking-widest text-[11px] transition-all shadow-xl shadow-blue-600/30 active:scale-95"
+            >
+              ACESSAR MEU GESTOR
+            </button>
+            <button 
+              onClick={() => onNavigate('pricing')}
+              className="bg-white/5 border border-white/10 text-white px-8 py-4 rounded-2xl font-black uppercase italic tracking-widest text-[11px] hover:bg-white/10 transition-all"
+            >
+              VER PLANOS PRO
+            </button>
+          </div>
         </div>
-      </header>
+      </section>
 
+      {/* Quick Access Tools */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Clientes" value={loading ? '...' : clients.length} color="text-white" icon="👥" />
-        <StatCard label="Assinantes Ativos" value={loading ? '...' : active} color="text-green-500" icon="⚡" />
-        <StatCard label="Vencidos" value={loading ? '...' : expired} color="text-red-500" icon="🚫" />
-        <StatCard label="Vencendo em 5 dias" value={loading ? '...' : near.length} color="text-yellow-500" icon="⚠️" />
+        <ToolCard 
+          icon="⚽" 
+          title="Futebol" 
+          desc="Banners automáticos de jogos" 
+          onClick={() => onNavigate('football')}
+        />
+        <ToolCard 
+          icon="🎬" 
+          title="Cinema" 
+          desc="Artes de filmes e séries" 
+          onClick={() => onNavigate('movie')}
+        />
+        <ToolCard 
+          icon="🎨" 
+          title="Logotipos" 
+          desc="Crie sua marca com IA" 
+          onClick={() => onNavigate('logo')}
+        />
+        <ToolCard 
+          icon="🔍" 
+          title="Análise" 
+          desc="Otimize seus anúncios" 
+          onClick={() => onNavigate('ad-analyzer')}
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-[#141824] rounded-[32px] border border-gray-800 overflow-hidden shadow-2xl">
-          <div className="p-6 border-b border-gray-800 bg-black/20 flex justify-between items-center">
-            <h4 className="text-xs font-black uppercase tracking-widest text-gray-400">🚨 Próximos Vencimentos</h4>
-            <button onClick={() => onNavigate('gestor-clientes')} className="text-[10px] font-black text-blue-500 hover:underline">VER TODOS</button>
+      {/* Stats Summary / Tips */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-[#141824] rounded-[40px] border border-gray-800 p-8 flex flex-col md:flex-row items-center gap-8">
+          <div className="w-32 h-32 bg-blue-600/10 rounded-full flex items-center justify-center text-5xl shadow-inner border border-blue-500/10">
+            🤖
           </div>
-          <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
-            {loading ? (
-              <div className="p-12 text-center text-gray-600 font-bold uppercase text-[9px] animate-pulse">Sincronizando base de dados...</div>
-            ) : near.length > 0 ? (
-              near.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-6 border-b border-gray-800/50 hover:bg-white/[0.02]">
-                  <div>
-                    <p className="font-bold text-sm text-white">{c.name}</p>
-                    <p className="text-[10px] text-gray-500 uppercase font-black">{servers.find(s => s.id === c.serverId)?.name || 'Sem Servidor'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-mono text-yellow-500 font-bold">{new Date(c.expirationDate + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
-                    <button onClick={() => onNavigate('gestor-template-ai')} className="text-[9px] font-black text-blue-500 uppercase mt-1">COBRAR VIA WHATSAPP</button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-12 text-center text-gray-700 uppercase font-black text-[10px]">Tudo em dia por aqui.</div>
-            )}
+          <div className="flex-1 space-y-4 text-center md:text-left">
+            <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">
+              POTENCIALIZE COM <span className="text-blue-500">INTELIGÊNCIA ARTIFICIAL</span>
+            </h3>
+            <p className="text-sm text-gray-500 font-medium leading-relaxed">
+              Sabia que anúncios com legendas geradas por IA têm 35% mais cliques? 
+              Use nosso Gerador de Legendas para criar copies persuasivas em segundos.
+            </p>
+            <button 
+              onClick={() => onNavigate('editor')}
+              className="text-[10px] font-black text-blue-500 uppercase tracking-widest hover:underline"
+            >
+              CRIAR LEGENDA AGORA →
+            </button>
           </div>
         </div>
 
-        <div className="bg-[#141824] rounded-[32px] border border-gray-800 p-8 flex flex-col justify-center items-center text-center space-y-6">
-           <div className="w-20 h-20 bg-blue-600/10 rounded-full flex items-center justify-center text-3xl">📊</div>
-           <h3 className="text-xl font-black italic uppercase tracking-tighter">Quer automatizar suas <span className="text-blue-500">Cobranças?</span></h3>
-           <p className="text-sm text-gray-400 max-w-xs">Nossa IA redige mensagens personalizadas para cada cliente, aumentando sua taxa de renovação em até 40%.</p>
-           <button onClick={() => onNavigate('gestor-template-ai')} className="bg-blue-600 px-8 py-3 rounded-xl font-black uppercase text-xs italic tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20">Configurar Templates IA</button>
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[40px] p-8 flex flex-col justify-between shadow-2xl shadow-blue-600/20">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-blue-200 opacity-80">Dica do Dia</p>
+            <h4 className="text-xl font-black italic uppercase tracking-tighter text-white">Mantenha seu DNS atualizado!</h4>
+          </div>
+          <p className="text-xs text-blue-100 font-bold leading-relaxed mt-4">
+            Evite quedas no seu serviço conferindo regularmente as configurações de DNS no menu "Seja Dono".
+          </p>
+          <button 
+            onClick={() => onNavigate('dns-setup')}
+            className="mt-6 w-full bg-white text-blue-600 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg"
+          >
+            VER TUTORIAL DNS
+          </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 };
 
-const StatCard = ({ label, value, color, icon }: any) => (
-  <div className="bg-[#141824] p-8 rounded-[32px] border border-gray-800 shadow-xl">
-    <div className="flex justify-between items-start mb-2">
-      <span className="text-2xl opacity-50">{icon}</span>
-      <span className={`text-3xl font-black italic ${color}`}>{value}</span>
-    </div>
-    <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">{label}</p>
-  </div>
+const ToolCard = ({ icon, title, desc, onClick }: { icon: string, title: string, desc: string, onClick: () => void }) => (
+  <button 
+    onClick={onClick}
+    className="bg-[#141824] p-6 rounded-[32px] border border-gray-800 hover:border-blue-500/50 transition-all group text-left shadow-xl"
+  >
+    <div className="text-3xl mb-4 group-hover:scale-110 transition-transform">{icon}</div>
+    <h4 className="text-sm font-black uppercase italic text-white tracking-tight">{title}</h4>
+    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">{desc}</p>
+  </button>
 );
 
-export default GestorDashboard;
+export default Dashboard;
