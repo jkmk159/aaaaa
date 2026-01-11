@@ -1,131 +1,129 @@
 import React from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
 import { 
-  LayoutDashboard, 
-  Users, 
-  Calendar, 
-  CreditCard, 
-  Palette, 
-  Image as ImageIcon, 
-  Video, 
-  Tv, 
-  Type,
-  Lock, // Ícone de cadeado para itens bloqueados
-  LogOut
+  LayoutDashboard, Users, Calendar, CreditCard, 
+  Palette, Image as ImageIcon, Video, Tv, Type, 
+  Lock, LogOut, X 
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-const Sidebar = () => {
-  const router = useRouter();
+interface SidebarProps {
+  currentView: string;
+  onNavigate: (view: string) => void;
+  userEmail?: string;
+  isPro?: boolean;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const Sidebar = ({ currentView, onNavigate, isOpen, onClose }: SidebarProps) => {
   const { profile, signOut } = useAuth();
 
-  // Função para verificar se o usuário tem acesso PRO
-  const isPro = profile?.subscription_status === 'active' || profile?.role === 'admin';
+  // Verifica se o usuário é PRO ou Admin
+  const isProUser = profile?.subscription_status === 'active' || profile?.role === 'admin';
 
   const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', pro: false },
-    { name: 'Clientes', icon: Users, path: '/clientes', pro: false },
-    { name: 'Calendário', icon: Calendar, path: '/calendario', pro: false },
-    { name: 'Planos e Preços', icon: CreditCard, path: '/planos', pro: false },
+    { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
+    { id: 'clientes', name: 'Clientes', icon: Users },
+    { id: 'calendario', name: 'Calendário', icon: Calendar },
+    { id: 'planos', name: 'Planos e Preços', icon: CreditCard },
   ];
 
   const generatorItems = [
-    { name: 'Gerador de Futebol', icon: ImageIcon, path: '/gerador-futebol', pro: true },
-    { name: 'Gerador de Filmes', icon: Video, path: '/gerador-filmes', pro: true },
-    { name: 'Gerador de Séries', icon: Tv, path: '/gerador-series', pro: true },
-    { name: 'Gerador de Logos', icon: Palette, path: '/gerador-logos', pro: true },
-    { name: 'Gerador de Legendas', icon: Type, path: '/gerador-legendas', pro: true },
+    { id: 'gerador-futebol', name: 'Gerador de Futebol', icon: ImageIcon, pro: true },
+    { id: 'gerador-filmes', name: 'Gerador de Filmes', icon: Video, pro: true },
+    { id: 'gerador-series', name: 'Gerador de Séries', icon: Tv, pro: true },
+    { id: 'gerador-logos', name: 'Gerador de Logos', icon: Palette, pro: true },
+    { id: 'gerador-legendas', name: 'Gerador de Legendas', icon: Type, pro: true },
   ];
 
-  return (
-    <div className="flex flex-col h-screen w-64 bg-[#0a0c14] border-r border-white/10 p-4">
-      <div className="flex items-center gap-2 px-2 mb-8">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold">S</span>
-        </div>
-        <span className="text-xl font-bold text-white italic">Stream<span className="text-blue-500">HUB</span></span>
-      </div>
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = '/';
+  };
 
-      <nav className="flex-1 space-y-8">
-        {/* Menu Principal */}
-        <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 mb-4">
-            Menu
+  return (
+    <>
+      {/* Overlay para mobile */}
+      {isOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={onClose} />
+      )}
+
+      <div className={`fixed inset-y-0 left-0 w-64 bg-[#0a0c14] border-r border-white/10 p-4 z-50 transform transition-transform duration-300 lg:relative lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        <div className="flex items-center justify-between mb-8 px-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white">S</div>
+            <span className="text-xl font-bold text-white italic">Stream<span className="text-blue-500">HUB</span></span>
           </div>
-          <div className="space-y-1">
-            {menuItems.map((item) => (
-              <Link key={item.path} href={item.path}>
-                <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-                  router.pathname === item.path ? 'bg-blue-600/10 text-blue-500' : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }`}>
+          <button onClick={onClose} className="lg:hidden text-gray-400"><X size={20}/></button>
+        </div>
+
+        <nav className="flex-1 space-y-8 overflow-y-auto">
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase px-2 mb-4">Menu</div>
+            <div className="space-y-1">
+              {menuItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => { onNavigate(item.id); onClose(); }}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                    currentView === item.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
                   <item.icon size={20} />
                   <span className="font-medium">{item.name}</span>
-                </div>
-              </Link>
-            ))}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Geradores com Trava PRO */}
-        <div>
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 mb-4">
-            Geradores
-          </div>
-          <div className="space-y-1">
-            {generatorItems.map((item) => {
-              const active = router.pathname === item.path;
-              
-              if (isPro) {
-                return (
-                  <Link key={item.path} href={item.path}>
-                    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-                      active ? 'bg-blue-600/10 text-blue-500' : 'text-gray-400 hover:text-white hover:bg-white/5'
-                    }`}>
-                      <item.icon size={20} />
-                      <span className="font-medium">{item.name}</span>
-                    </div>
-                  </Link>
-                );
-              }
-
-              // Versão bloqueada para usuários Trial
-              return (
-                <div key={item.path} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-gray-600 cursor-not-allowed group">
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase px-2 mb-4">Geradores</div>
+            <div className="space-y-1">
+              {generatorItems.map((item) => (
+                <button
+                  key={item.id}
+                  disabled={!isProUser}
+                  onClick={() => { if(isProUser) { onNavigate(item.id); onClose(); } }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                    !isProUser ? 'opacity-50 cursor-not-allowed text-gray-600' : 
+                    currentView === item.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
                   <div className="flex items-center gap-3">
                     <item.icon size={20} />
                     <span className="font-medium">{item.name}</span>
                   </div>
-                  <Lock size={14} className="text-gray-700" />
-                </div>
-              );
-            })}
+                  {!isProUser && <Lock size={14} />}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      {/* Perfil e Logout */}
-      <div className="mt-auto pt-4 border-t border-white/10">
-        <div className="flex items-center gap-3 px-3 py-4">
-          <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-white font-bold border border-white/10">
-            {profile?.email?.substring(0, 2).toUpperCase()}
+        <div className="mt-auto pt-4 border-t border-white/10">
+          <div className="flex items-center gap-3 px-3 py-4">
+            <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-600/50 flex items-center justify-center text-blue-500 font-bold">
+              {profile?.email?.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{profile?.email}</p>
+              <p className="text-[10px] font-bold uppercase text-blue-500">
+                {profile?.role === 'admin' ? 'ADMIN' : (isProUser ? 'PLANO PRO' : 'TRIAL')}
+              </p>
+            </div>
           </div>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium text-white truncate">{profile?.email}</p>
-            <p className="text-xs text-blue-500 font-bold uppercase tracking-tighter">
-              {profile?.role === 'admin' ? 'Admin' : (profile?.subscription_status === 'active' ? 'Plano Pro' : 'Conta Trial')}
-            </p>
-          </div>
+          <button 
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-3 px-3 py-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+          >
+            <LogOut size={20} />
+            <span className="font-medium">Sair</span>
+          </button>
         </div>
-        <button 
-          onClick={() => signOut()}
-          className="w-full flex items-center gap-3 px-3 py-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
-        >
-          <LogOut size={20} />
-          <span className="font-medium">Sair da Conta</span>
-        </button>
       </div>
-    </div>
+    </>
   );
 };
 
