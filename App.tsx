@@ -73,9 +73,16 @@ const App: React.FC = () => {
       if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
-          serverId: c.server_id, plan_id: c.plan_id, expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
+          id: c.id, 
+          name: c.name, 
+          username: c.username, 
+          password: c.password, 
+          phone: c.phone,
+          serverId: c.server_id, 
+          planId: c.plan_id, // CORREÇÃO: mapeado de plan_id para planId
+          expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), 
+          url_m3u: c.url_m3u
         })));
       }
     } catch (e) { console.error("Erro ao carregar dados:", e); } finally { setDataLoading(false); }
