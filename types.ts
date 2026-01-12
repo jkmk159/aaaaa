@@ -33,6 +33,9 @@ export interface UserProfile {
   email: string;
   role: 'admin' | 'reseller';
   subscription_status?: 'active' | 'trial' | 'expired';
+  credits?: number;
+  parent_id?: string;
+  full_name?: string;
 }
 
 export interface ResaleCustomer {
