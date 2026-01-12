@@ -85,6 +85,7 @@ const Dashboard: React.FC<MainDashboardProps> = ({
 
     try {
       setLoading(true);
+      // CORREÇÃO: Estrutura de inserção robusta
       const { error } = await supabase.from('profiles').insert({
         email: newUser.email,
         full_name: newUser.full_name,
@@ -95,7 +96,13 @@ const Dashboard: React.FC<MainDashboardProps> = ({
         subscription_status: 'trial'
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes("column \"full_name\"") || error.message.includes("column \"phone\"")) {
+          alert("ERRO NO BANCO: Você precisa adicionar as colunas 'full_name' e 'phone' na tabela 'profiles' do seu Supabase.");
+          throw error;
+        }
+        throw error;
+      }
 
       if (!isAdmin) {
         await supabase.from('profiles').update({ credits: (userProfile.credits || 0) - 1 }).eq('id', userProfile.id);
@@ -106,7 +113,8 @@ const Dashboard: React.FC<MainDashboardProps> = ({
       onRefreshProfile();
       fetchManagedUsers();
     } catch (e: any) {
-      alert("Erro: " + e.message);
+      console.error(e);
+      alert("Falha ao criar: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -145,21 +153,36 @@ const Dashboard: React.FC<MainDashboardProps> = ({
     if (!selectedUser) return;
     try {
       setLoading(true);
+      // CORREÇÃO: PATCH ROBUSTO. Se der erro 400, explicamos o motivo (falta de colunas no banco).
       const { error } = await supabase.from('profiles').update({
         full_name: editUser.full_name,
         phone: editUser.phone,
         email: editUser.email
       }).eq('id', selectedUser.id);
-      if (error) throw error;
+      
+      if (error) {
+        if (error.code === '42703' || error.message.includes('column')) {
+          alert("ERRO 400: Coluna não encontrada. Vá ao Supabase e adicione as colunas 'full_name' (text) e 'phone' (text) na tabela 'profiles'.");
+        } else {
+          alert("Erro: " + error.message);
+        }
+        throw error;
+      }
+      
       alert("Perfil atualizado!");
       setIsEditModalOpen(false);
       fetchManagedUsers();
-    } catch (e: any) { alert(e.message); } finally { setLoading(false); }
+    } catch (e: any) { 
+      console.error(e); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const filteredUsers = managedUsers.filter(u => 
     u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.phone?.includes(searchTerm)
   );
 
   return (
@@ -191,7 +214,10 @@ const Dashboard: React.FC<MainDashboardProps> = ({
                </div>
             </div>
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => {
+                setNewUser({email: '', password: '', full_name: '', phone: '', role: 'reseller'});
+                setIsModalOpen(true);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all shadow-xl shadow-blue-600/30 active:scale-95 flex items-center gap-3"
             >
               <span>⊕</span> CRIAR NOVO LOGIN
@@ -212,7 +238,7 @@ const Dashboard: React.FC<MainDashboardProps> = ({
             <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30">🔍</span>
             <input 
               type="text" 
-              placeholder="Buscar por nome ou e-mail..." 
+              placeholder="Buscar por nome, e-mail ou WhatsApp..." 
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full bg-black/40 border border-gray-700 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold outline-none focus:border-blue-500 transition-all"
@@ -336,8 +362,12 @@ const Dashboard: React.FC<MainDashboardProps> = ({
               <InputGroup label="Nome Completo" value={editUser.full_name} onChange={(v: string) => setEditUser({...editUser, full_name: v})} />
               <InputGroup label="WhatsApp" value={editUser.phone} onChange={(v: string) => setEditUser({...editUser, phone: v})} />
               <InputGroup label="E-mail de Acesso" value={editUser.email} onChange={(v: string) => setEditUser({...editUser, email: v})} />
-              <button onClick={handleUpdateUser} className="w-full bg-white text-black py-4 rounded-2xl font-black uppercase text-xs italic transition-all hover:bg-gray-200">
-                SALVAR ALTERAÇÕES
+              <button 
+                onClick={handleUpdateUser} 
+                disabled={loading}
+                className={`w-full bg-white text-black py-4 rounded-2xl font-black uppercase text-xs italic transition-all hover:bg-gray-200 ${loading ? 'opacity-50' : ''}`}
+              >
+                {loading ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}
               </button>
             </div>
           </div>
