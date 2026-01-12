@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ViewType, Client, Server, Plan, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
@@ -21,7 +20,6 @@ import GestorCalendario from './components/GestorCalendario';
 import GestorPlanos from './components/GestorPlanos';
 
 import { supabase } from './lib/supabase';
-import { createRemoteIptvUser, renewRemoteIptvUser } from './services/iptvService';
 
 // Lista de visualizações que EXIGEM status PRO
 const PRO_VIEWS: ViewType[] = [
@@ -47,10 +45,14 @@ const App: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   const getClientStatus = (expirationDate: string): 'active' | 'expired' | 'near_expiry' => {
-    const now = new Date();
-    const exp = new Date(expirationDate + 'T00:00:00');
-    const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays < 0 ? 'expired' : diffDays <= 5 ? 'near_expiry' : 'active';
+    try {
+      const now = new Date();
+      const exp = new Date(expirationDate + 'T00:00:00');
+      const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays < 0 ? 'expired' : diffDays <= 5 ? 'near_expiry' : 'active';
+    } catch {
+      return 'active';
+    }
   };
 
   const addDaysHelper = (date: Date, days: number): string => {
@@ -63,14 +65,14 @@ const App: React.FC = () => {
     if (!userId || isMasterMode.current) return;
     setDataLoading(true);
     try {
-      const [resClients, resServers, resPlans] = await Promise.all([
-        supabase.from('clients').select('*').order('created_at', { ascending: false }),
-        supabase.from('servers').select('*'),
-        supabase.from('plans').select('*')
-      ]);
-      
+      // Usamos consultas separadas para que, se uma tabela não existir, as outras ainda carreguem
+      const resServers = await supabase.from('servers').select('*');
       if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
+
+      const resPlans = await supabase.from('plans').select('*');
       if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({ id: p.id, name: p.name, price: p.price, durationValue: p.duration_value, durationUnit: p.duration_unit })));
+
+      const resClients = await supabase.from('clients').select('*').order('created_at', { ascending: false });
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
           id: c.id, 
@@ -79,42 +81,59 @@ const App: React.FC = () => {
           password: c.password, 
           phone: c.phone,
           serverId: c.server_id, 
-          planId: c.plan_id, // CORREÇÃO: mapeado de plan_id para planId
+          planId: c.plan_id,
           expirationDate: c.expiration_date,
           status: getClientStatus(c.expiration_date), 
           url_m3u: c.url_m3u
         })));
       }
-    } catch (e) { console.error("Erro ao carregar dados:", e); } finally { setDataLoading(false); }
+    } catch (e) { 
+      console.error("Erro ao carregar dados do banco:", e); 
+    } finally { 
+      setDataLoading(false); 
+    }
   }, []);
 
   const fetchFullUserData = useCallback(async (userId: string) => {
-    if (isMasterMode.current) return;
+    if (!userId || isMasterMode.current) return;
     try {
-      const { data: profile } = await supabase.from('profiles').select('id, email, role, subscription_status').eq('id', userId).maybeSingle();
+      const { data: profile, error } = await supabase.from('profiles').select('id, email, role, subscription_status, credits').eq('id', userId).maybeSingle();
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
       }
       await fetchData(userId);
-    } catch (e) { console.error("Erro ao carregar perfil:", e); }
+    } catch (e) { 
+      console.error("Erro ao carregar perfil:", e); 
+    }
   }, [fetchData]);
 
   useEffect(() => {
     const initAuth = async () => {
-      setAuthLoading(true);
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
-      if (initialSession) {
-        setSession(initialSession);
-        await fetchFullUserData(initialSession.user.id);
-        setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+      try {
+        setAuthLoading(true);
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (initialSession) {
+          setSession(initialSession);
+          // Não aguardamos o fetch de dados para liberar a UI se demorar muito
+          fetchFullUserData(initialSession.user.id);
+          setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
+        } else {
+          setCurrentView('login');
+        }
+      } catch (e) {
+        console.error("Falha crítica na inicialização:", e);
+      } finally {
+        // ESSENCIAL: Garante que o spinner de carregamento suma
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     };
+
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (isMasterMode.current && event !== 'SIGNED_OUT') return;
+      
       if (newSession) {
         setSession(newSession);
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -128,36 +147,49 @@ const App: React.FC = () => {
         setSubscriptionStatus('trial');
         setCurrentView('login');
       }
-      setAuthLoading(false);
     });
+
     return () => subscription.unsubscribe();
   }, [fetchFullUserData]);
 
   const handleSaveClient = async (client: Client) => {
     const userId = session?.user.id;
     if (!userId || isMasterMode.current) return;
-    let finalClient = { ...client };
-    await supabase.from('clients').upsert({
-      id: finalClient.id, user_id: userId, name: finalClient.name, username: finalClient.username, 
-      password: finalClient.password, phone: finalClient.phone, server_id: finalClient.serverId, 
-      plan_id: finalClient.planId, expiration_date: finalClient.expirationDate, url_m3u: finalClient.url_m3u
-    });
-    fetchData(userId);
+    try {
+      await supabase.from('clients').upsert({
+        id: client.id, 
+        user_id: userId, 
+        name: client.name, 
+        username: client.username, 
+        password: client.password, 
+        phone: client.phone, 
+        server_id: client.serverId, 
+        plan_id: client.planId, 
+        expiration_date: client.expirationDate, 
+        url_m3u: client.url_m3u
+      });
+      fetchData(userId);
+    } catch (e) {
+      alert("Erro ao salvar cliente.");
+    }
   };
 
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
     const userId = session?.user.id;
     if (!userId || isMasterMode.current) return;
-    await supabase.from('clients').update({ expiration_date: manualDate, plan_id: planId }).eq('id', clientId);
-    fetchData(userId);
+    try {
+      await supabase.from('clients').update({ expiration_date: manualDate, plan_id: planId }).eq('id', clientId);
+      fetchData(userId);
+    } catch (e) {
+      alert("Erro ao renovar cliente.");
+    }
   };
 
-  // FIX TS2322: Adicionado parâmetro opcional para bater com a interface AuthProps
   const handleDemoLogin = (email?: string) => {
     const finalEmail = email || 'jaja@jaja';
     isMasterMode.current = true;
     setSession({ user: { email: finalEmail, id: 'master' } });
-    setUserProfile({ id: 'master', email: finalEmail, role: 'admin' });
+    setUserProfile({ id: 'master', email: finalEmail, role: 'admin', credits: 999 });
     setSubscriptionStatus('active');
     setCurrentView('dashboard');
   };
@@ -182,7 +214,7 @@ const App: React.FC = () => {
       case 'sales-copy': return <SalesCopy />;
       case 'gestor-dashboard': return <GestorDashboard clients={clients} servers={servers} onNavigate={setCurrentView as any} onRenew={renewClient} getClientStatus={getClientStatus} loading={dataLoading} />;
       case 'gestor-servidores': return <GestorServidores servers={servers} onAddServer={() => {}} onDeleteServer={() => {}} />;
-      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={() => {}} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={() => {}} getClientStatus={getClientStatus} addDays={addDaysHelper} />;
+      case 'gestor-clientes': return <GestorClientes clients={clients} setClients={setClients} onSaveClient={handleSaveClient} servers={servers} plans={plans} onRenew={renewClient} onDelete={() => {}} getClientStatus={getClientStatus} addDays={addDaysHelper} />;
       case 'gestor-planos': return <GestorPlanos plans={plans} setPlans={setPlans} />;
       case 'gestor-template-ai': return <GestorTemplateAI clients={clients} plans={plans} getClientStatus={getClientStatus} />;
       case 'gestor-calendario': return <GestorCalendario clients={clients} servers={servers} onNavigate={setCurrentView as any} />;
@@ -193,7 +225,10 @@ const App: React.FC = () => {
   if (authLoading) return (
     <div className="min-h-screen bg-[#0b0e14] flex flex-col items-center justify-center gap-6">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-xl">Stream<span className="text-white">HUB</span></h2>
+      <div className="flex flex-col items-center">
+        <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-2xl">Stream<span className="text-white">HUB</span></h2>
+        <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-2 animate-pulse">Sincronizando com o servidor...</p>
+      </div>
     </div>
   );
 
@@ -210,8 +245,14 @@ const App: React.FC = () => {
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] truncate">{String(currentView).replace('gestor-', 'GESTOR / ').toUpperCase()}</span>
             </div>
             {userProfile && (
-              <div className={`border px-4 py-1.5 rounded-full ${isPro ? 'bg-blue-600/10 border-blue-500/20' : 'bg-gray-800/50 border-gray-700'}`}>
-                <span className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>{isPro ? 'MEMBRO PRO' : 'CONTA TRIAL'}</span>
+              <div className="flex items-center gap-4">
+                <div className="hidden sm:flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-gray-800">
+                  <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">CRÉDITOS:</span>
+                  <span className="text-xs font-black text-white italic">{userProfile.credits ?? 0}</span>
+                </div>
+                <div className={`border px-4 py-1.5 rounded-full ${isPro ? 'bg-blue-600/10 border-blue-500/20' : 'bg-gray-800/50 border-gray-700'}`}>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>{isPro ? 'MEMBRO PRO' : 'CONTA TRIAL'}</span>
+                </div>
               </div>
             )}
           </header>
