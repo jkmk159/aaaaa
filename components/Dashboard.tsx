@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ViewType, UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
@@ -12,7 +11,7 @@ export interface MainDashboardProps {
 interface InputGroupProps {
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (v: any) => void; // Ajustado para evitar erro TS7006
   placeholder?: string;
   type?: string;
 }
@@ -47,351 +46,275 @@ const Dashboard: React.FC<MainDashboardProps> = ({
   });
 
   const isAdmin = userProfile?.role === 'admin';
-  const userName = userProfile?.full_name || userProfile?.email?.split('@')[0].toUpperCase() || 'USUÁRIO';
 
-  useEffect(() => {
-    if (!userProfile) onRefreshProfile();
-  }, []);
-
+  // FUNÇÃO CORRIGIDA: Agora ela é chamada sempre que o componente monta
   const fetchManagedUsers = async () => {
-    if (!userProfile) return;
-    setLoading(true);
     try {
+      setLoading(true);
       let query = supabase.from('profiles').select('*');
+      
       if (!isAdmin) {
-        query = query.eq('parent_id', userProfile.id);
-      } else {
-        query = query.neq('id', userProfile.id);
+        query = query.eq('parent_id', userProfile?.id);
       }
-      const { data } = await query.order('created_at', { ascending: false } as any);
-      if (data) setManagedUsers(data);
-    } catch (e) {
-      console.error(e);
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setManagedUsers(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar usuários:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Carrega os dados automaticamente ao abrir a página ou voltar de outra categoria
   useEffect(() => {
-    fetchManagedUsers();
-  }, [userProfile]);
+    if (userProfile?.id) {
+      fetchManagedUsers();
+    }
+  }, [userProfile?.id]);
 
   const handleCreateUser = async () => {
-    if (!userProfile) return;
-    if (!isAdmin && (userProfile.credits || 0) < 1) {
-      alert("Saldo insuficiente! Cada novo login custa 1 crédito.");
-      return;
-    }
-
     try {
       setLoading(true);
-      // CORREÇÃO: Estrutura de inserção robusta
-      const { error } = await supabase.from('profiles').insert({
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
-        full_name: newUser.full_name,
-        phone: newUser.phone,
-        role: 'reseller',
-        parent_id: userProfile.id,
-        credits: 0,
-        subscription_status: 'trial'
+        password: newUser.password,
       });
 
-      if (error) {
-        if (error.message.includes("column \"full_name\"") || error.message.includes("column \"phone\"")) {
-          alert("ERRO NO BANCO: Você precisa adicionar as colunas 'full_name' e 'phone' na tabela 'profiles' do seu Supabase.");
-          throw error;
-        }
-        throw error;
-      }
+      if (authError) throw authError;
 
-      if (!isAdmin) {
-        await supabase.from('profiles').update({ credits: (userProfile.credits || 0) - 1 }).eq('id', userProfile.id);
-      }
+      if (authData.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            full_name: newUser.full_name,
+            phone: newUser.phone,
+            role: newUser.role,
+            parent_id: userProfile?.id,
+            subscription_status: 'trial',
+            credits: 0
+          })
+          .eq('id', authData.user.id);
 
-      alert("Revendedor criado com sucesso!");
-      setIsModalOpen(false);
-      onRefreshProfile();
-      fetchManagedUsers();
-    } catch (e: any) {
-      console.error(e);
-      alert("Falha ao criar: " + e.message);
+        if (profileError) throw profileError;
+        
+        setIsModalOpen(false);
+        setNewUser({ email: '', password: '', full_name: '', phone: '', role: 'reseller' });
+        fetchManagedUsers();
+      }
+    } catch (error: any) {
+      alert('Erro ao criar usuário: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateCredits = async (type: 'add' | 'remove') => {
-    if (!selectedUser || !userProfile) return;
-    const amount = Math.abs(creditAmount);
-    
+  const handleUpdateCredits = async (action: 'add' | 'remove') => {
+    if (!selectedUser || creditAmount <= 0) return;
+
     try {
       setLoading(true);
-      if (type === 'add') {
-        if (!isAdmin && (userProfile.credits || 0) < amount) {
-          alert("Créditos insuficientes.");
-          return;
-        }
-        await supabase.from('profiles').update({ credits: (selectedUser.credits || 0) + amount }).eq('id', selectedUser.id);
-        if (!isAdmin) await supabase.from('profiles').update({ credits: (userProfile.credits || 0) - amount }).eq('id', userProfile.id);
-      } else {
-        if ( (selectedUser.credits || 0) < amount ) {
-          alert("O revendedor não possui saldo suficiente para esta remoção.");
-          return;
-        }
-        await supabase.from('profiles').update({ credits: (selectedUser.credits || 0) - amount }).eq('id', selectedUser.id);
-        if (!isAdmin) await supabase.from('profiles').update({ credits: (userProfile.credits || 0) + amount }).eq('id', userProfile.id);
-      }
+      const newAmount = action === 'add' 
+        ? selectedUser.credits + creditAmount 
+        : Math.max(0, selectedUser.credits - creditAmount);
 
-      alert("Saldo atualizado!");
+      const { error } = await supabase
+        .from('profiles')
+        .update({ credits: newAmount })
+        .eq('id', selectedUser.id);
+
+      if (error) throw error;
+
       setIsCreditModalOpen(false);
-      onRefreshProfile();
+      setCreditAmount(0);
       fetchManagedUsers();
-    } catch (e) { alert("Erro na operação."); } finally { setLoading(false); }
-  };
-
-  const handleUpdateUser = async () => {
-    if (!selectedUser) return;
-    try {
-      setLoading(true);
-      // CORREÇÃO: PATCH ROBUSTO. Se der erro 400, explicamos o motivo (falta de colunas no banco).
-      const { error } = await supabase.from('profiles').update({
-        full_name: editUser.full_name,
-        phone: editUser.phone,
-        email: editUser.email
-      }).eq('id', selectedUser.id);
-      
-      if (error) {
-        if (error.code === '42703' || error.message.includes('column')) {
-          alert("ERRO 400: Coluna não encontrada. Vá ao Supabase e adicione as colunas 'full_name' (text) e 'phone' (text) na tabela 'profiles'.");
-        } else {
-          alert("Erro: " + error.message);
-        }
-        throw error;
-      }
-      
-      alert("Perfil atualizado!");
-      setIsEditModalOpen(false);
-      fetchManagedUsers();
-    } catch (e: any) { 
-      console.error(e); 
-    } finally { 
-      setLoading(false); 
+    } catch (error: any) {
+      alert('Erro ao atualizar créditos: ' + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const filteredUsers = managedUsers.filter(u => 
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.phone?.includes(searchTerm)
+  const filteredUsers = managedUsers.filter(user => 
+    user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="p-4 md:p-8 space-y-8 animate-fade-in max-w-7xl mx-auto">
-      {/* Resumo e Saldo */}
-      <section className="relative overflow-hidden bg-[#141824] rounded-[48px] border border-gray-800 p-8 md:p-12 shadow-3xl">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-blue-600/10 to-transparent pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
-          <div className="space-y-4 text-center md:text-left">
-            <div className="inline-block px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-black uppercase tracking-[0.3em] text-blue-500">
-              REVENDA STREAMHUB PRO
+    <div className="p-6 space-y-8 animate-in fade-in duration-700">
+      {/* Header */}
+      <div className="relative overflow-hidden bg-[#141824] border border-gray-800 rounded-[2rem] p-8">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] -mr-32 -mt-32"></div>
+        <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 bg-blue-600/10 px-3 py-1 rounded-full border border-blue-500/20 mb-4">
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+              <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">
+                REVENDA STREAMHUB PRO
+              </span>
             </div>
-            <h2 className="text-4xl md:text-5xl font-black italic tracking-tighter uppercase leading-none text-white">
-              OLÁ, <span className="text-blue-500">{userName}</span>
-            </h2>
-            <p className="text-gray-400 max-w-md text-sm font-bold uppercase tracking-widest opacity-60">
-              Gerencie sua rede e controle os créditos.
+            <h1 className="text-4xl md:text-5xl font-black text-white italic tracking-tighter">
+              OLÁ, <span className="text-blue-500 uppercase">{userProfile?.full_name?.split(' ')[0] || 'USUÁRIO'}</span>
+            </h1>
+            <p className="text-gray-400 mt-2 font-medium max-w-md">
+              Gerencie sua rede e controle os créditos dos seus revendedores com precisão.
             </p>
           </div>
 
-          <div className="flex flex-col items-center md:items-end gap-2">
-            <div className="bg-black/40 border border-white/5 p-6 rounded-[32px] min-w-[240px] text-center md:text-right shadow-inner">
-               <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">SALDO DISPONÍVEL</p>
-               <div className="flex items-center justify-center md:justify-end gap-3">
-                 <span className="text-5xl font-black italic text-white leading-none">
-                   {isAdmin ? '∞' : (userProfile?.credits ?? 0)}
-                 </span>
-                 <span className="text-blue-500 font-black italic text-sm mt-4 uppercase">Créditos</span>
-               </div>
+          <div className="bg-black/40 p-6 rounded-3xl border border-gray-800 backdrop-blur-xl min-w-[240px]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">SALDO DISPONÍVEL</span>
+              <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center">
+                <span className="text-blue-500">💎</span>
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl font-black text-white italic">
+                {isAdmin ? '∞' : (userProfile?.credits || 0)}
+              </span>
+              <span className="text-[10px] font-black text-blue-500 uppercase italic">Créditos</span>
             </div>
             <button 
-              onClick={() => {
-                setNewUser({email: '', password: '', full_name: '', phone: '', role: 'reseller'});
-                setIsModalOpen(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-black uppercase italic tracking-widest text-xs transition-all shadow-xl shadow-blue-600/30 active:scale-95 flex items-center gap-3"
+              onClick={() => setIsModalOpen(true)}
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-2"
             >
-              <span>⊕</span> CRIAR NOVO LOGIN
+              <span>+</span> CRIAR NOVO LOGIN
             </button>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Seção de Gerenciamento */}
-      <section className="space-y-6 bg-[#141824] p-8 rounded-[40px] border border-gray-800 shadow-xl">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-gray-800 pb-6">
-          <div className="flex items-center gap-4">
-             <h3 className="text-sm font-black text-gray-400 uppercase tracking-[0.3em]">Minha Rede</h3>
-             <span className="bg-blue-600/10 text-blue-500 px-3 py-1 rounded-lg text-[10px] font-black">{managedUsers.length} REVENDAS</span>
+      {/* Grid de Revendedores */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xs font-black text-white uppercase tracking-[0.3em]">Minha Rede</h2>
+            <span className="bg-blue-600/20 text-blue-500 text-[10px] font-black px-2 py-0.5 rounded-md border border-blue-500/20">
+              {filteredUsers.length} REVENDAS
+            </span>
           </div>
-          
-          <div className="relative w-full md:w-80">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30">🔍</span>
+          <div className="relative">
             <input 
-              type="text" 
-              placeholder="Buscar por nome, e-mail ou WhatsApp..." 
+              type="text"
+              placeholder="Buscar por nome ou e-mail..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full bg-black/40 border border-gray-700 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold outline-none focus:border-blue-500 transition-all"
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-[#141824] border border-gray-800 rounded-xl px-4 py-2 text-xs text-white w-64 focus:outline-none focus:border-blue-500/50 transition-all"
             />
           </div>
         </div>
 
-        {/* Tabela de Revendedores */}
-        <div className="overflow-x-auto custom-scrollbar max-h-[500px]">
-          <table className="w-full text-left min-w-[800px]">
-            <thead className="sticky top-0 bg-[#141824] z-10">
-              <tr className="border-b border-gray-800">
-                <th className="py-4 px-4 text-[9px] font-black text-gray-600 uppercase tracking-widest">Revendedor</th>
-                <th className="py-4 px-4 text-[9px] font-black text-gray-600 uppercase tracking-widest text-center">Créditos</th>
-                <th className="py-4 px-4 text-[9px] font-black text-gray-600 uppercase tracking-widest text-center">Status</th>
-                <th className="py-4 px-4 text-[9px] font-black text-gray-600 uppercase tracking-widest text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800/40">
-              {loading ? (
-                Array(3).fill(0).map((_, i) => (
-                  <tr key={i} className="animate-pulse"><td colSpan={4} className="py-8 bg-black/10"></td></tr>
-                ))
-              ) : filteredUsers.length > 0 ? (
-                filteredUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-white/[0.02] transition-colors group">
-                    <td className="py-4 px-4">
-                       <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 rounded-xl bg-blue-600/10 flex items-center justify-center text-xs">👤</div>
-                         <div>
-                           <p className="font-black text-white italic text-xs uppercase">{user.full_name || 'NÃO INFORMADO'}</p>
-                           <p className="text-[9px] text-gray-500 font-bold lowercase">{user.email}</p>
-                         </div>
-                       </div>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                       <span className="text-xl font-black italic text-white">{user.role === 'admin' ? '∞' : (user.credits ?? 0)}</span>
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                       <span className={`text-[8px] font-black px-2 py-1 rounded-md border ${user.subscription_status === 'active' || user.role === 'admin' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-gray-800 text-gray-500 border-gray-700'}`}>
-                         {user.role === 'admin' ? 'ADMIN' : (user.subscription_status?.toUpperCase() || 'TRIAL')}
-                       </span>
-                    </td>
-                    <td className="py-4 px-4 text-right">
-                       <div className="flex justify-end gap-2">
-                         {user.phone && (
-                           <button 
-                            onClick={() => window.open(`https://wa.me/${user.phone?.replace(/\D/g,'')}`, '_blank')}
-                            className="p-2 rounded-xl bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white transition-all"
-                            title="WhatsApp"
-                           >
-                            📲
-                           </button>
-                         )}
-                         <button 
-                           onClick={() => { setSelectedUser(user); setIsEditModalOpen(true); setEditUser({full_name: user.full_name || '', phone: user.phone || '', email: user.email}); }}
-                           className="p-2 rounded-xl bg-white/5 text-gray-400 hover:text-white transition-all"
-                           title="Editar Perfil"
-                         >
-                           ✏️
-                         </button>
-                         <button 
-                           onClick={() => { setSelectedUser(user); setCreditAmount(0); setIsCreditModalOpen(true); }}
-                           className="p-2 rounded-xl bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white transition-all"
-                           title="Gestão de Saldo"
-                         >
-                           💰
-                         </button>
-                       </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="py-20 text-center opacity-20 text-[10px] font-black uppercase tracking-widest italic">Nenhum revendedor encontrado</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-48 bg-[#141824] border border-gray-800 rounded-3xl animate-pulse"></div>
+            ))}
+          </div>
+        ) : filteredUsers.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredUsers.map((user) => (
+              <div key={user.id} className="group relative bg-[#141824] border border-gray-800 rounded-3xl p-6 hover:border-blue-500/30 transition-all hover:bg-white/[0.02]">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-400 rounded-2xl flex items-center justify-center text-xl shadow-lg shadow-blue-600/20">
+                      👤
+                    </div>
+                    <div>
+                      <h3 className="font-black text-white text-sm uppercase italic leading-none mb-1">
+                        {user.full_name || 'NÃO INFORMADO'}
+                      </h3>
+                      <p className="text-[10px] text-gray-500 font-medium">{user.email}</p>
+                    </div>
+                  </div>
+                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border uppercase ${
+                    user.subscription_status === 'active' 
+                      ? 'bg-green-500/10 border-green-500/20 text-green-500' 
+                      : 'bg-gray-500/10 border-gray-500/20 text-gray-500'
+                  }`}>
+                    {user.subscription_status || 'trial'}
+                  </span>
+                </div>
 
-      {/* Atalhos Rápidos */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <ToolCard icon="⚽" label="Futebol" onClick={() => onNavigate('football')} />
-        <ToolCard icon="🎬" label="Filmes" onClick={() => onNavigate('movie')} />
-        <ToolCard icon="🎨" label="Logos" onClick={() => onNavigate('logo')} />
-        <ToolCard icon="📊" label="Clientes" onClick={() => onNavigate('gestor-dashboard')} />
+                <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-gray-800/50 mb-6">
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">CRÉDITOS</span>
+                  <span className="text-xl font-black text-white italic">{user.credits || 0}</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  <button 
+                    onClick={() => {
+                      setSelectedUser(user);
+                      setIsCreditModalOpen(true);
+                    }}
+                    className="bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all border border-blue-500/20 active:scale-95"
+                  >
+                    Add Créditos
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-20 bg-[#141824] border border-gray-800 rounded-[2rem] border-dashed">
+            <span className="text-4xl mb-4 block opacity-20">👥</span>
+            <p className="text-gray-500 font-black text-xs uppercase tracking-widest">Nenhuma revenda encontrada</p>
+          </div>
+        )}
       </div>
 
-      {/* Modal Criar Login */}
+      {/* Modal Criar Usuário */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
-          <div className="relative w-full max-w-md bg-[#141824] rounded-[48px] border border-gray-800 p-10 animate-fade-in shadow-3xl overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-blue-600"></div>
-            <h2 className="text-3xl font-black italic text-white mb-8 uppercase tracking-tighter">NOVO <span className="text-blue-500">REVENDEDOR</span></h2>
-            <div className="space-y-4">
-              <InputGroup label="Nome Completo" value={newUser.full_name} onChange={(v: string) => setNewUser({...newUser, full_name: v})} placeholder="Nome do Revendedor" />
-              <InputGroup label="WhatsApp (com DDD)" value={newUser.phone} onChange={(v: string) => setNewUser({...newUser, phone: v})} placeholder="5511999999999" />
-              <InputGroup label="E-mail" value={newUser.email} onChange={(v: string) => setNewUser({...newUser, email: v})} placeholder="email@acesso.com" />
-              <InputGroup label="Senha Inicial" type="password" value={newUser.password} onChange={(v: string) => setNewUser({...newUser, password: v})} placeholder="••••••••" />
-              
-              <div className="pt-6">
-                 <button onClick={handleCreateUser} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase text-xs italic tracking-widest transition-all hover:bg-blue-700 shadow-xl">
-                   CRIAR E DESCONTAR 1 CRÉDITO
-                 </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#141824] border border-gray-800 rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black text-white italic uppercase italic">Novo Revendedor</h2>
+                <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white">✕</button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+              
+              <div className="space-y-4">
+                <InputGroup label="Nome Completo" value={newUser.full_name} onChange={(v: any) => setNewUser({...newUser, full_name: v})} placeholder="Ex: João Silva" />
+                <InputGroup label="E-mail de Acesso" value={newUser.email} onChange={(v: any) => setNewUser({...newUser, email: v})} placeholder="contato@exemplo.com" type="email" />
+                <InputGroup label="Telefone / WhatsApp" value={newUser.phone} onChange={(v: any) => setNewUser({...newUser, phone: v})} placeholder="(11) 99999-9999" />
+                <InputGroup label="Senha Provisória" value={newUser.password} onChange={(v: any) => setNewUser({...newUser, password: v})} placeholder="Mínimo 6 caracteres" type="password" />
+              </div>
 
-      {/* Modal Editar Perfil */}
-      {isEditModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setIsEditModalOpen(false)}></div>
-          <div className="relative w-full max-w-md bg-[#141824] rounded-[48px] border border-gray-800 p-10 animate-fade-in shadow-3xl">
-            <h2 className="text-2xl font-black italic text-white mb-8 uppercase tracking-tighter leading-none">EDITAR <span className="text-blue-500">REVENDEDOR</span></h2>
-            <div className="space-y-4">
-              <InputGroup label="Nome Completo" value={editUser.full_name} onChange={(v: string) => setEditUser({...editUser, full_name: v})} />
-              <InputGroup label="WhatsApp" value={editUser.phone} onChange={(v: string) => setEditUser({...editUser, phone: v})} />
-              <InputGroup label="E-mail de Acesso" value={editUser.email} onChange={(v: string) => setEditUser({...editUser, email: v})} />
               <button 
-                onClick={handleUpdateUser} 
+                onClick={handleCreateUser}
                 disabled={loading}
-                className={`w-full bg-white text-black py-4 rounded-2xl font-black uppercase text-xs italic transition-all hover:bg-gray-200 ${loading ? 'opacity-50' : ''}`}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg shadow-blue-600/20 active:scale-95 disabled:opacity-50"
               >
-                {loading ? 'SALVANDO...' : 'SALVAR ALTERAÇÕES'}
+                {loading ? 'CRIANDO...' : 'CRIAR ACESSO AGORA'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Gestão de Créditos */}
+      {/* Modal Créditos */}
       {isCreditModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setIsCreditModalOpen(false)}></div>
-          <div className="relative w-full max-w-sm bg-[#141824] rounded-[40px] border border-gray-800 p-10 animate-fade-in shadow-3xl">
-            <h2 className="text-2xl font-black italic text-white mb-2 uppercase tracking-tighter">AJUSTE DE <span className="text-blue-500">SALDO</span></h2>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-8">Revendedor: {selectedUser.full_name || selectedUser.email}</p>
-            
-            <div className="space-y-6">
-              <input 
-                type="number"
-                value={creditAmount} 
-                onChange={e => setCreditAmount(Number(e.target.value))}
-                className="w-full bg-black/40 border border-gray-700 rounded-2xl p-6 text-3xl font-black italic text-center outline-none focus:border-blue-500 text-white" 
-                placeholder="0"
-              />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#141824] border border-gray-800 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="p-8 space-y-6 text-center">
+              <div className="w-16 h-16 bg-blue-600/20 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-4">💎</div>
+              <div>
+                <h2 className="text-xl font-black text-white italic uppercase italic">Gerenciar Créditos</h2>
+                <p className="text-gray-500 text-[10px] font-black uppercase mt-1">Usuário: {selectedUser.full_name}</p>
+              </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="p-6 bg-black/40 rounded-3xl border border-gray-800">
+                <input 
+                  type="number"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(parseInt(e.target.value) || 0)}
+                  className="bg-transparent text-4xl font-black text-white text-center w-full focus:outline-none italic"
+                />
+                <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-2 block">Quantidade</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <button 
                   onClick={() => handleUpdateCredits('add')}
                   className="bg-blue-600 text-white py-4 rounded-xl font-black uppercase text-[10px] italic shadow-lg shadow-blue-600/20 active:scale-95"
@@ -413,13 +336,6 @@ const Dashboard: React.FC<MainDashboardProps> = ({
   );
 };
 
-const ToolCard = ({ icon, label, onClick }: { icon: string, label: string, onClick: () => void }) => (
-  <button onClick={onClick} className="bg-[#141824] p-4 rounded-2xl border border-gray-800 hover:bg-white/[0.02] hover:border-blue-500/50 transition-all flex flex-col items-center justify-center gap-2">
-    <span className="text-2xl">{icon}</span>
-    <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{label}</span>
-  </button>
-);
-
 const InputGroup: React.FC<InputGroupProps> = ({ label, value, onChange, placeholder, type = 'text' }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1">{label}</label>
@@ -427,7 +343,7 @@ const InputGroup: React.FC<InputGroupProps> = ({ label, value, onChange, placeho
       type={type}
       value={value} 
       onChange={e => onChange(e.target.value)}
-      className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-sm font-bold text-white outline-none focus:border-blue-500 transition-all" 
+      className="w-full bg-black/40 border border-gray-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-gray-700"
       placeholder={placeholder}
     />
   </div>
