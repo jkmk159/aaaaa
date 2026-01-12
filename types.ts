@@ -36,6 +36,8 @@ export interface UserProfile {
   credits?: number;
   parent_id?: string;
   full_name?: string;
+  phone?: string;
+  created_at?: string;
 }
 
 export interface ResaleCustomer {
