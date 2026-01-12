@@ -46,7 +46,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
     if (onClose) onClose();
   };
 
-  const NavItem = ({ item, restricted = true }: { item: any, restricted?: boolean }) => {
+  // FIXED: Properly type NavItem as a React.FC to allow 'key' prop and resolve TS errors
+  const NavItem: React.FC<{ item: any; restricted?: boolean }> = ({ item, restricted = true }) => {
     const isActive = currentView === item.id;
     const locked = restricted && !isPro;
 
@@ -119,7 +120,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, i
               currentView === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
             }`}
           >
-            <span className="mr-3 text-lg">🏠</span> Início
+            <span className="mr-3 text-lg">🏠</span> Painel Revenda
           </button>
 
           {/* GESTOR */}
