@@ -105,32 +105,58 @@ const Dashboard: React.FC<MainDashboardProps> = ({
 
   // TRECHO CORRIGIDO PARA EVITAR ERRO TS18048
   const handleUpdateCredits = async (action: 'add' | 'remove') => {
-    if (!selectedUser || creditAmount <= 0) return;
+    if (!selectedUser || creditAmount <= 0 || !userProfile) return;
 
     try {
       setLoading(true);
-      const currentCredits = selectedUser.credits || 0; // Garante que é um número
+
+      // 1. Se for ADICIONAR créditos e o usuário logado NÃO for admin,
+      // precisamos verificar se ele tem saldo e descontar dele.
+      if (action === 'add' && userProfile.role !== 'admin') {
+        if (userProfile.credits < creditAmount) {
+          alert('Você não tem créditos suficientes!');
+          setLoading(false);
+          return;
+        }
+
+        // Desconta os créditos de quem está enviando (o revendedor logado)
+        const { error: subtractError } = await supabase
+          .from('profiles')
+          .update({ credits: userProfile.credits - creditAmount })
+          .eq('id', userProfile.id);
+
+        if (subtractError) throw subtractError;
+        
+        // Atualiza o perfil local para refletir o desconto na tela na hora
+        onRefreshProfile(); 
+      }
+
+      // 2. Agora atualiza os créditos de quem está recebendo
+      const currentCredits = selectedUser.credits || 0;
       const newAmount = action === 'add' 
         ? currentCredits + creditAmount 
         : Math.max(0, currentCredits - creditAmount);
 
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from('profiles')
         .update({ credits: newAmount })
         .eq('id', selectedUser.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
+      alert(action === 'add' ? 'Créditos enviados com sucesso!' : 'Créditos removidos!');
       setIsCreditModalOpen(false);
       setCreditAmount(0);
-      fetchManagedUsers();
+      fetchManagedUsers(); // Atualiza a lista de revendedores na tela
+      
     } catch (error: any) {
-      alert('Erro ao atualizar créditos: ' + error.message);
+      alert('Erro ao processar créditos: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
+  
   const filteredUsers = managedUsers.filter(user => 
     user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
