@@ -11,7 +11,7 @@ export interface MainDashboardProps {
 interface InputGroupProps {
   label: string;
   value: string;
-  onChange: (v: any) => void; // Ajustado para evitar erro TS7006
+  onChange: (v: any) => void;
   placeholder?: string;
   type?: string;
 }
@@ -25,7 +25,6 @@ const Dashboard: React.FC<MainDashboardProps> = ({
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -39,15 +38,8 @@ const Dashboard: React.FC<MainDashboardProps> = ({
     role: 'reseller' as 'reseller'
   });
 
-  const [editUser, setEditUser] = useState({
-    full_name: '',
-    phone: '',
-    email: ''
-  });
-
   const isAdmin = userProfile?.role === 'admin';
 
-  // FUNÇÃO CORRIGIDA: Agora ela é chamada sempre que o componente monta
   const fetchManagedUsers = async () => {
     try {
       setLoading(true);
@@ -68,7 +60,6 @@ const Dashboard: React.FC<MainDashboardProps> = ({
     }
   };
 
-  // Carrega os dados automaticamente ao abrir a página ou voltar de outra categoria
   useEffect(() => {
     if (userProfile?.id) {
       fetchManagedUsers();
@@ -111,14 +102,16 @@ const Dashboard: React.FC<MainDashboardProps> = ({
     }
   };
 
+  // TRECHO CORRIGIDO PARA EVITAR ERRO TS18048
   const handleUpdateCredits = async (action: 'add' | 'remove') => {
     if (!selectedUser || creditAmount <= 0) return;
 
     try {
       setLoading(true);
+      const currentCredits = selectedUser.credits || 0; // Garante que é um número
       const newAmount = action === 'add' 
-        ? selectedUser.credits + creditAmount 
-        : Math.max(0, selectedUser.credits - creditAmount);
+        ? currentCredits + creditAmount 
+        : Math.max(0, currentCredits - creditAmount);
 
       const { error } = await supabase
         .from('profiles')
