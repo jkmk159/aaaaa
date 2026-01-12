@@ -110,32 +110,35 @@ const Dashboard: React.FC<MainDashboardProps> = ({
     try {
       setLoading(true);
 
+      // Pegamos os créditos atuais garantindo que sejam números (usando || 0)
+      const myCurrentCredits = userProfile.credits || 0;
+
       // 1. Se for ADICIONAR créditos e o usuário logado NÃO for admin,
       // precisamos verificar se ele tem saldo e descontar dele.
       if (action === 'add' && userProfile.role !== 'admin') {
-        if (userProfile.credits < creditAmount) {
+        if (myCurrentCredits < creditAmount) {
           alert('Você não tem créditos suficientes!');
           setLoading(false);
           return;
         }
 
-        // Desconta os créditos de quem está enviando (o revendedor logado)
+        // Desconta os créditos de quem está enviando
         const { error: subtractError } = await supabase
           .from('profiles')
-          .update({ credits: userProfile.credits - creditAmount })
+          .update({ credits: myCurrentCredits - creditAmount })
           .eq('id', userProfile.id);
 
         if (subtractError) throw subtractError;
         
-        // Atualiza o perfil local para refletir o desconto na tela na hora
+        // Atualiza o perfil local para refletir o desconto na tela
         onRefreshProfile(); 
       }
 
       // 2. Agora atualiza os créditos de quem está recebendo
-      const currentCredits = selectedUser.credits || 0;
+      const targetUserCredits = selectedUser.credits || 0;
       const newAmount = action === 'add' 
-        ? currentCredits + creditAmount 
-        : Math.max(0, currentCredits - creditAmount);
+        ? targetUserCredits + creditAmount 
+        : Math.max(0, targetUserCredits - creditAmount);
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -147,7 +150,7 @@ const Dashboard: React.FC<MainDashboardProps> = ({
       alert(action === 'add' ? 'Créditos enviados com sucesso!' : 'Créditos removidos!');
       setIsCreditModalOpen(false);
       setCreditAmount(0);
-      fetchManagedUsers(); // Atualiza a lista de revendedores na tela
+      fetchManagedUsers();
       
     } catch (error: any) {
       alert('Erro ao processar créditos: ' + error.message);
