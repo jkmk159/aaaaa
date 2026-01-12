@@ -66,41 +66,42 @@ const Dashboard: React.FC<MainDashboardProps> = ({
     }
   }, [userProfile?.id]);
 
-  const handleCreateUser = async () => {
-    try {
-      setLoading(true);
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: newUser.password,
-      });
-
-      if (authError) throw authError;
-
-      if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({
-            full_name: newUser.full_name,
-            phone: newUser.phone,
-            role: newUser.role,
-            parent_id: userProfile?.id,
-            subscription_status: 'trial',
-            credits: 0
-          })
-          .eq('id', authData.user.id);
-
-        if (profileError) throw profileError;
-        
-        setIsModalOpen(false);
-        setNewUser({ email: '', password: '', full_name: '', phone: '', role: 'reseller' });
-        fetchManagedUsers();
+ const handleCreateUser = async () => {
+  try {
+    setLoading(true);
+    
+    // Enviamos os dados extras dentro de 'options.data'
+    // O Gatilho (trigger) do SQL vai ler esses dados automaticamente
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: newUser.email,
+      password: newUser.password,
+      options: {
+        data: {
+          full_name: newUser.full_name,
+          parent_id: userProfile?.id, // Enviando seu ID como pai
+          role: 'reseller'
+        }
       }
-    } catch (error: any) {
-      alert('Erro ao criar usuário: ' + error.message);
-    } finally {
-      setLoading(false);
+    });
+
+    if (authError) throw authError;
+
+    if (authData.user) {
+      alert('Usuário criado com sucesso!');
+      setIsModalOpen(false);
+      setNewUser({ email: '', password: '', full_name: '', phone: '', role: 'reseller' });
+      
+      // Pequeno intervalo para o banco processar o trigger
+      setTimeout(() => {
+        fetchManagedUsers();
+      }, 1000);
     }
-  };
+  } catch (error: any) {
+    alert('Erro ao criar usuário: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // TRECHO CORRIGIDO PARA EVITAR ERRO TS18048
   const handleUpdateCredits = async (action: 'add' | 'remove') => {
