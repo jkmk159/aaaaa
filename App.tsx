@@ -22,7 +22,6 @@ import GestorPlanos from './components/GestorPlanos';
 
 import { supabase } from './lib/supabase';
 
-// Lista de visualizações que EXIGEM status PRO
 const PRO_VIEWS: ViewType[] = [
   'football', 'movie', 'series', 'logo', 'editor', 'ad-analyzer', 'sales-copy',
   'gestor-dashboard', 'gestor-servidores', 'gestor-clientes', 'gestor-calendario', 
@@ -39,7 +38,9 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const isMasterMode = useRef(false);
-  const isPro = subscriptionStatus === 'active';
+  
+  // CORREÇÃO: Admin é sempre PRO. Trial ou Active também define o acesso.
+  const isPro = userProfile?.role === 'admin' || subscriptionStatus === 'active';
 
   const [clients, setClients] = useState<Client[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
@@ -66,7 +67,6 @@ const App: React.FC = () => {
     if (!userId || isMasterMode.current) return;
     setDataLoading(true);
     try {
-      // Usamos consultas separadas para que, se uma tabela não existir, as outras ainda carreguem
       const resServers = await supabase.from('servers').select('*');
       if (resServers.data) setServers(resServers.data.map((s: any) => ({ id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || '' })));
 
@@ -76,20 +76,13 @@ const App: React.FC = () => {
       const resClients = await supabase.from('clients').select('*').order('created_at', { ascending: false });
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
-          id: c.id, 
-          name: c.name, 
-          username: c.username, 
-          password: c.password, 
-          phone: c.phone,
-          serverId: c.server_id, 
-          planId: c.plan_id,
-          expirationDate: c.expiration_date,
-          status: getClientStatus(c.expiration_date), 
-          url_m3u: c.url_m3u
+          id: c.id, name: c.name, username: c.username, password: c.password, phone: c.phone,
+          serverId: c.server_id, planId: c.plan_id, expirationDate: c.expiration_date,
+          status: getClientStatus(c.expiration_date), url_m3u: c.url_m3u
         })));
       }
     } catch (e) { 
-      console.error("Erro ao carregar dados do banco:", e); 
+      console.error(e); 
     } finally { 
       setDataLoading(false); 
     }
@@ -98,14 +91,20 @@ const App: React.FC = () => {
   const fetchFullUserData = useCallback(async (userId: string) => {
     if (!userId || isMasterMode.current) return;
     try {
-      const { data: profile, error } = await supabase.from('profiles').select('id, email, role, subscription_status, credits').eq('id', userId).maybeSingle();
+      // CORREÇÃO: Incluindo full_name e phone na busca inicial
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, email, role, subscription_status, credits, full_name, phone')
+        .eq('id', userId)
+        .maybeSingle();
+      
       if (profile) {
         setUserProfile(profile);
         setSubscriptionStatus(profile.subscription_status || 'trial');
       }
       await fetchData(userId);
     } catch (e) { 
-      console.error("Erro ao carregar perfil:", e); 
+      console.error(e); 
     }
   }, [fetchData]);
 
@@ -116,16 +115,14 @@ const App: React.FC = () => {
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         if (initialSession) {
           setSession(initialSession);
-          // Não aguardamos o fetch de dados para liberar a UI se demorar muito
-          fetchFullUserData(initialSession.user.id);
+          await fetchFullUserData(initialSession.user.id);
           setCurrentView(prev => (prev === 'login' || prev === 'signup') ? 'dashboard' : prev);
         } else {
           setCurrentView('login');
         }
       } catch (e) {
-        console.error("Falha crítica na inicialização:", e);
+        console.error(e);
       } finally {
-        // ESSENCIAL: Garante que o spinner de carregamento suma
         setAuthLoading(false);
       }
     };
@@ -134,7 +131,6 @@ const App: React.FC = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (isMasterMode.current && event !== 'SIGNED_OUT') return;
-      
       if (newSession) {
         setSession(newSession);
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -158,21 +154,12 @@ const App: React.FC = () => {
     if (!userId || isMasterMode.current) return;
     try {
       await supabase.from('clients').upsert({
-        id: client.id, 
-        user_id: userId, 
-        name: client.name, 
-        username: client.username, 
-        password: client.password, 
-        phone: client.phone, 
-        server_id: client.serverId, 
-        plan_id: client.planId, 
-        expiration_date: client.expirationDate, 
-        url_m3u: client.url_m3u
+        id: client.id, user_id: userId, name: client.name, username: client.username, 
+        password: client.password, phone: client.phone, server_id: client.serverId, 
+        plan_id: client.planId, expiration_date: client.expirationDate, url_m3u: client.url_m3u
       });
       fetchData(userId);
-    } catch (e) {
-      alert("Erro ao salvar cliente.");
-    }
+    } catch (e) { console.error(e); }
   };
 
   const renewClient = async (clientId: string, planId: string, manualDate?: string) => {
@@ -181,27 +168,21 @@ const App: React.FC = () => {
     try {
       await supabase.from('clients').update({ expiration_date: manualDate, plan_id: planId }).eq('id', clientId);
       fetchData(userId);
-    } catch (e) {
-      alert("Erro ao renovar cliente.");
-    }
+    } catch (e) { console.error(e); }
   };
 
   const handleDemoLogin = (email?: string) => {
     const finalEmail = email || 'jaja@jaja';
     isMasterMode.current = true;
     setSession({ user: { email: finalEmail, id: 'master' } });
-    setUserProfile({ id: 'master', email: finalEmail, role: 'admin', credits: 999 });
+    setUserProfile({ id: 'master', email: finalEmail, role: 'admin', credits: 9999, subscription_status: 'active' });
     setSubscriptionStatus('active');
     setCurrentView('dashboard');
   };
 
   const renderContent = () => {
     if (!session) return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('login')} onDemoLogin={handleDemoLogin} />;
-
-    // BLOQUEIO CENTRALIZADO PARA USUÁRIOS TRIAL
-    if (!isPro && PRO_VIEWS.includes(currentView as any)) {
-      return <Pricing userEmail={session?.user?.email} isPro={false} />;
-    }
+    if (!isPro && PRO_VIEWS.includes(currentView as any)) return <Pricing userEmail={session?.user?.email} isPro={false} />;
 
     switch (currentView) {
       case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => !isMasterMode.current && session && fetchFullUserData(session.user.id)} />;
@@ -228,7 +209,6 @@ const App: React.FC = () => {
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       <div className="flex flex-col items-center">
         <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-2xl">Stream<span className="text-white">HUB</span></h2>
-        <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-2 animate-pulse">Sincronizando com o servidor...</p>
       </div>
     </div>
   );
@@ -249,7 +229,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-4">
                 <div className="hidden sm:flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full border border-gray-800">
                   <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">CRÉDITOS:</span>
-                  <span className="text-xs font-black text-white italic">{userProfile.credits ?? 0}</span>
+                  <span className="text-xs font-black text-white italic">{userProfile.role === 'admin' ? '∞' : (userProfile.credits ?? 0)}</span>
                 </div>
                 <div className={`border px-4 py-1.5 rounded-full ${isPro ? 'bg-blue-600/10 border-blue-500/20' : 'bg-gray-800/50 border-gray-700'}`}>
                   <span className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-blue-500' : 'text-gray-500'}`}>{isPro ? 'MEMBRO PRO' : 'CONTA TRIAL'}</span>
