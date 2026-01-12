@@ -9,6 +9,14 @@ export interface MainDashboardProps {
   onRefreshProfile: () => void;
 }
 
+interface InputGroupProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}
+
 const Dashboard: React.FC<MainDashboardProps> = ({
   onNavigate,
   userProfile,
@@ -303,10 +311,10 @@ const Dashboard: React.FC<MainDashboardProps> = ({
             <div className="absolute top-0 left-0 w-full h-1 bg-blue-600"></div>
             <h2 className="text-3xl font-black italic text-white mb-8 uppercase tracking-tighter">NOVO <span className="text-blue-500">REVENDEDOR</span></h2>
             <div className="space-y-4">
-              <InputGroup label="Nome Completo" value={newUser.full_name} onChange={v => setNewUser({...newUser, full_name: v})} placeholder="Nome do Revendedor" />
-              <InputGroup label="WhatsApp (com DDD)" value={newUser.phone} onChange={v => setNewUser({...newUser, phone: v})} placeholder="5511999999999" />
-              <InputGroup label="E-mail" value={newUser.email} onChange={v => setNewUser({...newUser, email: v})} placeholder="email@acesso.com" />
-              <InputGroup label="Senha Inicial" type="password" value={newUser.password} onChange={v => setNewUser({...newUser, password: v})} placeholder="••••••••" />
+              <InputGroup label="Nome Completo" value={newUser.full_name} onChange={(v: string) => setNewUser({...newUser, full_name: v})} placeholder="Nome do Revendedor" />
+              <InputGroup label="WhatsApp (com DDD)" value={newUser.phone} onChange={(v: string) => setNewUser({...newUser, phone: v})} placeholder="5511999999999" />
+              <InputGroup label="E-mail" value={newUser.email} onChange={(v: string) => setNewUser({...newUser, email: v})} placeholder="email@acesso.com" />
+              <InputGroup label="Senha Inicial" type="password" value={newUser.password} onChange={(v: string) => setNewUser({...newUser, password: v})} placeholder="••••••••" />
               
               <div className="pt-6">
                  <button onClick={handleCreateUser} className="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase text-xs italic tracking-widest transition-all hover:bg-blue-700 shadow-xl">
@@ -325,9 +333,9 @@ const Dashboard: React.FC<MainDashboardProps> = ({
           <div className="relative w-full max-w-md bg-[#141824] rounded-[48px] border border-gray-800 p-10 animate-fade-in shadow-3xl">
             <h2 className="text-2xl font-black italic text-white mb-8 uppercase tracking-tighter leading-none">EDITAR <span className="text-blue-500">REVENDEDOR</span></h2>
             <div className="space-y-4">
-              <InputGroup label="Nome Completo" value={editUser.full_name} onChange={v => setEditUser({...editUser, full_name: v})} />
-              <InputGroup label="WhatsApp" value={editUser.phone} onChange={v => setEditUser({...editUser, phone: v})} />
-              <InputGroup label="E-mail de Acesso" value={editUser.email} onChange={v => setEditUser({...editUser, email: v})} />
+              <InputGroup label="Nome Completo" value={editUser.full_name} onChange={(v: string) => setEditUser({...editUser, full_name: v})} />
+              <InputGroup label="WhatsApp" value={editUser.phone} onChange={(v: string) => setEditUser({...editUser, phone: v})} />
+              <InputGroup label="E-mail de Acesso" value={editUser.email} onChange={(v: string) => setEditUser({...editUser, email: v})} />
               <button onClick={handleUpdateUser} className="w-full bg-white text-black py-4 rounded-2xl font-black uppercase text-xs italic transition-all hover:bg-gray-200">
                 SALVAR ALTERAÇÕES
               </button>
@@ -382,7 +390,7 @@ const ToolCard = ({ icon, label, onClick }: { icon: string, label: string, onCli
   </button>
 );
 
-const InputGroup = ({ label, value, onChange, placeholder, type = 'text' }: any) => (
+const InputGroup: React.FC<InputGroupProps> = ({ label, value, onChange, placeholder, type = 'text' }) => (
   <div className="space-y-1">
     <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1">{label}</label>
     <input 
