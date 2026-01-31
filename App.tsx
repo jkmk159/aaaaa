@@ -31,12 +31,17 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType | 'login' | 'signup'>('login');
   const [session, setSession] = useState<any | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(false);
-  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'trial' | 'expired'>('trial');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
+  const [dataLoading, setDataLoading] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] =
+    useState<'active' | 'trial' | 'expired'>('trial');
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isMasterMode = useRef(false);
+
   const isPro = userProfile?.role === 'admin' || subscriptionStatus === 'active';
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -65,17 +70,31 @@ const App: React.FC = () => {
     setDataLoading(true);
     try {
       const resServers = await supabase.from('servers').select('*');
-      if (resServers.data) setServers(resServers.data.map((s: any) => ({
-        id: s.id, name: s.name, url: s.url, apiKey: s.api_key || s.apiKey || ''
-      })));
+      if (resServers.data) {
+        setServers(resServers.data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          url: s.url,
+          apiKey: s.api_key || s.apiKey || ''
+        })));
+      }
 
       const resPlans = await supabase.from('plans').select('*');
-      if (resPlans.data) setPlans(resPlans.data.map((p: any) => ({
-        id: p.id, name: p.name, price: p.price,
-        durationValue: p.duration_value, durationUnit: p.duration_unit
-      })));
+      if (resPlans.data) {
+        setPlans(resPlans.data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          price: p.price,
+          durationValue: p.duration_value,
+          durationUnit: p.duration_unit
+        })));
+      }
 
-      const resClients = await supabase.from('clients').select('*').order('created_at', { ascending: false });
+      const resClients = await supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false });
+
       if (resClients.data) {
         setClients(resClients.data.map((c: any) => ({
           id: c.id,
@@ -97,6 +116,7 @@ const App: React.FC = () => {
 
   const fetchFullUserData = useCallback(async (userId: string) => {
     if (!userId || isMasterMode.current) return;
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, email, role, subscription_status, credits, full_name, phone')
@@ -111,19 +131,20 @@ const App: React.FC = () => {
     await fetchData(userId);
   }, [fetchData]);
 
-  // 🔥 CORREÇÃO DEFINITIVA DO LOOP
+  // 🔥 CORREÇÃO FINAL DO LOOP
   useEffect(() => {
-    setAuthLoading(true);
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setSession(session);
-          await fetchFullUserData(session!.user.id);
-          setCurrentView('dashboard');
+      async (_event, session) => {
+
+        if (!authInitialized) {
+          setAuthInitialized(true);
         }
 
-        if (event === 'SIGNED_OUT' || !session) {
+        if (session) {
+          setSession(session);
+          await fetchFullUserData(session.user.id);
+          setCurrentView('dashboard');
+        } else {
           isMasterMode.current = false;
           setSession(null);
           setUserProfile(null);
@@ -136,7 +157,7 @@ const App: React.FC = () => {
     );
 
     return () => subscription.unsubscribe();
-  }, [fetchFullUserData]);
+  }, [fetchFullUserData, authInitialized]);
 
   const handleDemoLogin = (email?: string) => {
     const finalEmail = email || 'jaja@jaja';
@@ -154,14 +175,23 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (!session)
-      return <Auth initialIsSignUp={currentView === 'signup'} onBack={() => setCurrentView('login')} onDemoLogin={handleDemoLogin} />;
+    if (!session) {
+      return (
+        <Auth
+          initialIsSignUp={currentView === 'signup'}
+          onBack={() => setCurrentView('login')}
+          onDemoLogin={handleDemoLogin}
+        />
+      );
+    }
 
-    if (!isPro && PRO_VIEWS.includes(currentView as any))
+    if (!isPro && PRO_VIEWS.includes(currentView as any)) {
       return <Pricing userEmail={session.user.email} isPro={false} />;
+    }
 
     switch (currentView) {
-      case 'dashboard': return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
+      case 'dashboard':
+        return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => fetchFullUserData(session.user.id)} />;
       case 'football': return <FootballBanners />;
       case 'movie': return <MovieBanners />;
       case 'series': return <SeriesBanners />;
@@ -170,22 +200,37 @@ const App: React.FC = () => {
       case 'editor': return <AdEditor />;
       case 'ad-analyzer': return <AdAnalyzer />;
       case 'sales-copy': return <SalesCopy />;
-      default: return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => session && fetchFullUserData(session.user.id)} />;
+      default:
+        return <Dashboard onNavigate={setCurrentView as any} userProfile={userProfile} onRefreshProfile={() => fetchFullUserData(session.user.id)} />;
     }
   };
 
-  if (authLoading) {
+  if (!authInitialized || authLoading) {
     return (
-      <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0b0e14] flex flex-col items-center justify-center gap-6">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <h2 className="text-blue-500 font-black italic uppercase tracking-tighter text-2xl">
+          Stream<span className="text-white">HUB</span>
+        </h2>
       </div>
     );
   }
 
   return (
     <div className="flex min-h-screen bg-[#0b0e14] text-gray-100">
-      {session && <Sidebar currentView={currentView as any} onNavigate={setCurrentView as any} userEmail={session.user.email} isPro={isPro} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />}
-      <main className="flex-1">{renderContent()}</main>
+      {session && (
+        <Sidebar
+          currentView={currentView as any}
+          onNavigate={setCurrentView as any}
+          userEmail={session.user.email}
+          isPro={isPro}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+        />
+      )}
+      <main className="flex-1 min-h-screen overflow-y-auto">
+        {renderContent()}
+      </main>
     </div>
   );
 };
